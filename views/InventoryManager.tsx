@@ -123,32 +123,71 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
           return;
       }
 
-      // 2. Execute Transfer (Simulated)
-      // Decrease from Source
-      const updatedProducts = products.map(p => {
-          if(p.id === sourceProd.id) {
-              return { ...p, stockLevel: p.stockLevel - transferData.quantity };
-          }
-          return p;
-      });
+      const destBranchName = branches.find(b => b.id === transferData.toBranchId)?.name;
+      const sourceBranchName = currentBranch.name;
 
-      // Increase/Create at Dest (Simplification: assuming product exists or creating simplified copy)
-      // For this demo, we'll just log the 'OUT' movement from this branch.
+      // 2. Identify/Create Dest Product (Based on SKU Match at Dest Branch)
+      const destProd = products.find(p => p.sku === sourceProd.sku && p.branchId === transferData.toBranchId);
       
-      const movementOut: StockMovement = {
-          id: `MV-${Date.now()}`,
+      let updatedProducts = [...products];
+      let newMovements = [...stockMovements];
+
+      // A. Decrement Source
+      updatedProducts = updatedProducts.map(p => 
+          p.id === sourceProd.id ? { ...p, stockLevel: p.stockLevel - transferData.quantity } : p
+      );
+      
+      newMovements.push({
+          id: `MV-OUT-${Date.now()}`,
           date: new Date().toISOString().split('T')[0],
           productId: sourceProd.id,
           branchId: currentBranch.id,
           type: 'TRANSFER_OUT',
           quantity: transferData.quantity,
-          reason: `Transfer to ${branches.find(b => b.id === transferData.toBranchId)?.name}`,
-      };
+          reason: `Transfer to ${destBranchName}`,
+      });
 
-      setStockMovements([movementOut, ...stockMovements]);
+      // B. Increment/Create Dest
+      if (destProd) {
+          updatedProducts = updatedProducts.map(p => 
+              p.id === destProd.id ? { ...p, stockLevel: p.stockLevel + transferData.quantity } : p
+          );
+          newMovements.push({
+              id: `MV-IN-${Date.now()}`,
+              date: new Date().toISOString().split('T')[0],
+              productId: destProd.id,
+              branchId: transferData.toBranchId,
+              type: 'TRANSFER_IN',
+              quantity: transferData.quantity,
+              reason: `Transfer from ${sourceBranchName}`,
+          });
+      } else {
+          // Clone Product for Destination
+          const newDestProd: Product = {
+              ...sourceProd,
+              id: `P-${Date.now()}-T${Math.floor(Math.random() * 100)}`,
+              branchId: transferData.toBranchId,
+              stockLevel: transferData.quantity,
+              location: 'Receiving' // Default location for incoming
+          };
+          updatedProducts.push(newDestProd);
+          
+          newMovements.push({
+              id: `MV-IN-${Date.now()}`,
+              date: new Date().toISOString().split('T')[0],
+              productId: newDestProd.id,
+              branchId: transferData.toBranchId,
+              type: 'TRANSFER_IN',
+              quantity: transferData.quantity,
+              reason: `Transfer from ${sourceBranchName} (New Item)`,
+          });
+      }
+
+      setStockMovements(newMovements);
       setProducts(updatedProducts);
       setIsTransferModalOpen(false);
       setTransferData({ toBranchId: '', productId: '', quantity: 0 });
+      alert(`Transfer successful! Inventory moved to ${destBranchName}.`);
   };
   
   const openReceiveModal = (po: PurchaseOrder) => {
@@ -449,6 +488,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
           <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden animate-in fade-in">
               <div className="p-4 border-b border-gray-100">
                   <h3 className="font-bold text-gray-700">Stock Movement Log</h3>
+                  <p className="text-xs text-gray-500 mt-1">Audit trail for {currentBranch.name}</p>
               </div>
               <div className="overflow-auto flex-1">
                   <table className="w-full text-left">
@@ -474,14 +514,14 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
                                               {move.type}
                                           </span>
                                       </td>
-                                      <td className="p-4 font-medium text-sm">{prod?.name}</td>
+                                      <td className="p-4 font-medium text-sm">{prod?.name || 'Unknown Item'}</td>
                                       <td className="p-4 text-center font-mono font-bold">{move.quantity}</td>
                                       <td className="p-4 text-sm text-gray-600">{move.reason || move.referenceId}</td>
                                   </tr>
                               );
                           })}
-                          {stockMovements.length === 0 && (
-                              <tr><td colSpan={5} className="p-8 text-center text-gray-400">No movements recorded yet.</td></tr>
+                          {stockMovements.filter(m => m.branchId === currentBranch.id).length === 0 && (
+                              <tr><td colSpan={5} className="p-8 text-center text-gray-400">No movements recorded yet for this branch.</td></tr>
                           )}
                       </tbody>
                   </table>

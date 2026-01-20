@@ -13,12 +13,30 @@ import HRManager from './views/HRManager';
 import SettingsManager from './views/SettingsManager';
 import ProjectManager from './views/ProjectManager';
 import AssetManager from './views/AssetManager';
-import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment, Employee } from './types';
+import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment, Employee, TenantSettings } from './types';
 import { ShieldAlert } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
   const [role, setRole] = useState<UserRole>('MANAGER');
+
+  // --- TENANT CONFIGURATION ---
+  const [tenantSettings, setTenantSettings] = useState<TenantSettings>({
+      name: 'GariHub Motors Ltd',
+      phone: '0722 123 456',
+      email: 'info@garihub.co.ke',
+      address: 'Industrial Area, Funzi Rd',
+      currency: 'KES',
+      tax: {
+          enabled: true,
+          rate: 16,
+          pin: 'P051234567Z'
+      },
+      branding: {
+          logoUrl: ''
+      },
+      invoiceTerms: 'All goods remain property of GariHub until paid in full.'
+  });
 
   // --- BRANCH MANAGEMENT ---
   const [branches, setBranches] = useState<Branch[]>([
@@ -45,21 +63,21 @@ const App: React.FC = () => {
   // --- GLOBAL MASTER DATA (Lifted for Tenancy/Branch Boundaries) ---
   const [employees, setEmployees] = useState<Employee[]>([
     { 
-      id: 'EMP-001', name: 'David Omondi', branchId: 'BR-HQ', role: 'TECHNICIAN', department: 'WORKSHOP', jobTitle: 'Senior Mechanic',
+      id: 'EMP-001', name: 'David Omondi', branchIds: ['BR-HQ', 'BR-WL'], role: 'TECHNICIAN', department: 'WORKSHOP', jobTitle: 'Senior Mechanic',
       employmentType: 'FULL_TIME', 
       phone: '0711222333', idNumber: '22334455', kraPin: 'A00112233X', 
       baseSalary: 65000, status: 'ACTIVE', skills: ['Suspension', 'Engine'], joinedDate: '2022-01-15',
       statutoryDetails: { deductNSSF: true, deductSHIF: true, deductHousingLevy: true, deductPAYE: true }
     },
     { 
-      id: 'EMP-002', name: 'Samuel K.', branchId: 'BR-HQ', role: 'TECHNICIAN', department: 'WORKSHOP', jobTitle: 'Auto Electrician',
+      id: 'EMP-002', name: 'Samuel K.', branchIds: ['BR-HQ'], role: 'TECHNICIAN', department: 'WORKSHOP', jobTitle: 'Auto Electrician',
       employmentType: 'FREELANCE', 
       phone: '0722333444', idNumber: '33445566', kraPin: 'A00223344Y', 
       baseSalary: 0, commissionRate: 40, status: 'ACTIVE', skills: ['Electrical', 'Diagnostics'], joinedDate: '2023-05-10',
       statutoryDetails: { deductNSSF: false, deductSHIF: false, deductHousingLevy: false, deductPAYE: true }
     },
     { 
-      id: 'EMP-003', name: 'Mercy Wanjiku', branchId: 'BR-WL', role: 'RECEPTIONIST', department: 'FRONT_OFFICE', jobTitle: 'Service Advisor',
+      id: 'EMP-003', name: 'Mercy Wanjiku', branchIds: ['BR-WL'], role: 'RECEPTIONIST', department: 'FRONT_OFFICE', jobTitle: 'Service Advisor',
       employmentType: 'CONTRACT', 
       phone: '0733444555', idNumber: '11223344', kraPin: 'A00334455Z', 
       baseSalary: 35000, status: 'ACTIVE', skills: ['Customer Service'], joinedDate: '2023-08-01',
@@ -290,7 +308,7 @@ const App: React.FC = () => {
     }
   ]);
 
-  // 5. Invoices
+  // 5. Invoices (Global Source of Truth)
   const [invoices, setInvoices] = useState<Invoice[]>([
     { 
         id: 'INV-2024-001', 
@@ -298,6 +316,7 @@ const App: React.FC = () => {
         customerName: 'John Kamau', 
         jobId: 'JOB-2024-001', 
         amount: 12500, 
+        taxAmount: 1724,
         date: '2023-10-25', 
         dueDate: '2023-11-25', 
         status: 'PAID', 
@@ -365,21 +384,16 @@ const App: React.FC = () => {
     servicePackageId?: string, 
     diagnosisFee?: number
   ) => {
-      // 1. Create the Job Card
-      // For Service Mode: Set status to WAITING_APPROVAL immediately (implied Quote sent)
-      // For Diagnosis Mode: Set status to DIAGNOSING
       const initialStatus = mode === 'SERVICE' ? JobStatus.WAITING_APPROVAL : JobStatus.DIAGNOSING;
       
       const newJob = { 
           ...job, 
           status: initialStatus,
-          // If paid diagnosis, we set estimated cost to fee
           estimatedCost: mode === 'DIAGNOSIS' && diagnosisFee ? diagnosisFee : job.estimatedCost 
       };
       
       setJobs([newJob, ...jobs]);
 
-      // 2. If Service Mode -> Generate Quote Immediately
       if (mode === 'SERVICE' && servicePackageId) {
           const pkg = servicePackages.find(p => p.id === servicePackageId);
           if (pkg) {
@@ -391,7 +405,7 @@ const App: React.FC = () => {
                   jobId: newJob.id,
                   date: new Date().toISOString().split('T')[0],
                   amount: pkg.basePrice,
-                  status: 'DRAFT', // Ready for customer review
+                  status: 'DRAFT', 
                   items: [{
                       description: pkg.name,
                       quantity: 1,
@@ -401,16 +415,13 @@ const App: React.FC = () => {
               };
               setQuotations([newQuote, ...quotations]);
               
-              // Update job with estimated cost from package
               const updatedJob = { ...newJob, estimatedCost: pkg.basePrice };
               setJobs(prevJobs => prevJobs.map(j => j.id === newJob.id ? updatedJob : j));
               
-              // Highlight new Job
               setHighlightedJobId(newJob.id);
-              setCurrentView('JOBS'); // Or SALES if you want to show the quote
+              setCurrentView('JOBS'); 
           }
       } 
-      // 3. If Diagnosis Mode -> Just navigate to Job
       else {
           setHighlightedJobId(newJob.id);
           setCurrentView('JOBS');
@@ -418,7 +429,6 @@ const App: React.FC = () => {
   };
 
   const handleGenerateQuoteFromJob = (job: JobCard) => {
-      // Create a quotation based on Diagnosis Items
       if (!job.diagnosis) return;
 
       const quoteItems = job.diagnosis.map(d => ({
@@ -444,29 +454,24 @@ const App: React.FC = () => {
 
       setQuotations([newQuote, ...quotations]);
       
-      // Update Job status
       const updatedJob = { ...job, status: JobStatus.WAITING_APPROVAL, estimatedCost: totalAmount };
       handleUpdateJob(updatedJob);
 
-      // Navigate to Sales
       setCurrentView('SALES');
   };
 
   const handleCreateJobFromOrder = (order: SalesOrder) => {
-    // Check if this order is linked to an existing job (Diagnosis Workflow)
     if (order.jobCardId) {
         const existingJob = jobs.find(j => j.id === order.jobCardId);
         if (existingJob) {
-            // Update existing job
             const updatedJob: JobCard = {
                 ...existingJob,
-                status: JobStatus.READY, // Move to Ready for Bay
+                status: JobStatus.READY, 
                 salesOrderId: order.id,
-                partsUsed: [] // Initialize or merge parts logic
+                partsUsed: [] 
             };
             handleUpdateJob(updatedJob);
             
-            // Update Order
             const updatedOrders = salesOrders.map(so => 
                 so.id === order.id 
                 ? { ...so, status: 'JOB_IN_PROGRESS' } as SalesOrder 
@@ -481,11 +486,10 @@ const App: React.FC = () => {
         }
     }
 
-    // Standard Flow: Create NEW Job
     const newJob: JobCard = {
         id: `JOB-${Date.now()}`,
         salesOrderId: order.id,
-        branchId: order.branchId, // Inherit branch from order
+        branchId: order.branchId, 
         vehicle: {
             id: `V-TEMP-${Date.now()}`,
             plateNumber: order.vehiclePlate,
@@ -511,7 +515,6 @@ const App: React.FC = () => {
     );
     setSalesOrders(updatedOrders);
     
-    // Navigate to the new job
     setCurrentView('JOBS');
     setHighlightedJobId(newJob.id);
     setTimeout(() => setHighlightedJobId(null), 2000);
@@ -546,8 +549,16 @@ const App: React.FC = () => {
   // --- FINANCE INTEGRATION: ACCRUAL BASIS ---
   
   // 1. Invoice Created: DR Accounts Receivable, CR Sales
-  const handleRecordInvoicePosting = (invoice: Invoice) => {
+  // This is the handler passed to SalesManager to ensure single source of truth
+  const handleInvoiceCreated = (invoice: Invoice) => {
+      // 1. Update Global State
+      setInvoices([invoice, ...invoices]);
+
+      // 2. Post to GL
       const amount = invoice.amount;
+      const tax = invoice.taxAmount || 0;
+      const revenue = amount - tax;
+
       const je: JournalEntry = {
           id: `JE-${Date.now()}`,
           date: new Date().toISOString().split('T')[0],
@@ -555,16 +566,23 @@ const App: React.FC = () => {
           reference: invoice.id,
           branchId: invoice.branchId,
           lines: [
-              { accountId: '1200', debit: amount, credit: 0 }, // AR (Debit Asset)
-              { accountId: '4000', debit: 0, credit: amount }  // Sales Income (Credit Revenue)
+              { accountId: '1200', debit: amount, credit: 0 }, // AR (Debit Asset) - Full Amount
+              { accountId: '4000', debit: 0, credit: revenue }  // Sales Income (Credit Revenue) - Net
           ]
       };
+
+      // Add VAT liability line if tax exists
+      if (tax > 0) {
+          je.lines.push({ accountId: '2100', debit: 0, credit: tax }); // VAT Payable (Credit Liability)
+      }
+
       setJournalEntries([je, ...journalEntries]);
       
       // Update GL Balances
       const updatedAccounts = chartOfAccounts.map(acc => {
-          if (acc.id === '1200') return { ...acc, balance: acc.balance + amount }; // AR increases
-          if (acc.id === '4000') return { ...acc, balance: acc.balance + amount }; // Income increases
+          if (acc.id === '1200') return { ...acc, balance: acc.balance + amount };
+          if (acc.id === '4000') return { ...acc, balance: acc.balance + revenue };
+          if (acc.id === '2100' && tax > 0) return { ...acc, balance: acc.balance + tax };
           return acc;
       });
       setChartOfAccounts(updatedAccounts);
@@ -670,6 +688,7 @@ const App: React.FC = () => {
             servicePackages={servicePackages}
             onCheckIn={handleCheckIn}
             onBookAppointment={handleBookAppointment}
+            tenantSettings={tenantSettings} // Pass for report generation
         />;
       case 'PROJECTS':
         return <ProjectManager 
@@ -693,12 +712,14 @@ const App: React.FC = () => {
             setSalesOrders={setSalesOrders}
             quotations={quotations}
             setQuotations={setQuotations}
+            invoices={invoices} // Passed from App state
             onCreateJob={handleCreateJobFromOrder}
             onViewJob={handleViewJob}
             highlightedOrderId={highlightedOrderId}
             currentBranch={currentBranch}
             onRecordPayment={handleRecordPayment}
-            onInvoiceCreated={handleRecordInvoicePosting}
+            onInvoiceCreated={handleInvoiceCreated} // Use handler that updates App state & GL
+            tenantSettings={tenantSettings}
         />;
       case 'FINANCE':
         return <FinanceManager 
@@ -730,6 +751,7 @@ const App: React.FC = () => {
             currentBranch={currentBranch}
             employees={employees}
             setEmployees={setEmployees}
+            branches={branches} // Pass all branches for assignment
         />;
       case 'SETTINGS':
          return <SettingsManager 
@@ -737,6 +759,8 @@ const App: React.FC = () => {
             setBranches={setBranches}
             serviceBays={serviceBays}
             setServiceBays={setServiceBays}
+            tenantSettings={tenantSettings}
+            setTenantSettings={setTenantSettings}
          />;
       default:
         return <div className="flex items-center justify-center h-full text-slate-400">Page not found</div>;

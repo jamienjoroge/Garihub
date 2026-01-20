@@ -1,49 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Download, Filter, FileText, CheckCircle2, X, Printer, Send, Search, Trash2, Calendar, User, Briefcase, DollarSign, ArrowRight, ClipboardList, Wrench, PackageCheck } from 'lucide-react';
-import { Invoice, Quotation, SalesOrder, InvoiceItem, Branch } from '../types';
+import { Invoice, Quotation, SalesOrder, InvoiceItem, Branch, TenantSettings } from '../types';
 
 interface SalesManagerProps {
     salesOrders: SalesOrder[];
     setSalesOrders: (orders: SalesOrder[]) => void;
     quotations: Quotation[];
     setQuotations: (quotes: Quotation[]) => void;
+    invoices: Invoice[]; // Passed from App state (Source of Truth)
     onCreateJob: (order: SalesOrder) => void;
     onViewJob: (jobId: string) => void;
     highlightedOrderId: string | null;
     currentBranch: Branch;
     onRecordPayment: (invoice: Invoice) => void;
+    onInvoiceCreated: (invoice: Invoice) => void; 
+    tenantSettings?: TenantSettings; // Configuration
 }
 
-const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders, quotations, setQuotations, onCreateJob, onViewJob, highlightedOrderId, currentBranch, onRecordPayment }) => {
+const SalesManager: React.FC<SalesManagerProps> = ({ 
+    salesOrders, setSalesOrders, quotations, setQuotations, invoices, 
+    onCreateJob, onViewJob, highlightedOrderId, currentBranch, 
+    onRecordPayment, onInvoiceCreated, tenantSettings 
+}) => {
   const [activeTab, setActiveTab] = useState<'QUOTATIONS' | 'ORDERS' | 'INVOICES'>('ORDERS');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Handle auto-switching to Order tab if highlightedOrderId is present
+  // Auto-switch tab
   useEffect(() => {
       if (highlightedOrderId) {
           setActiveTab('ORDERS');
       }
   }, [highlightedOrderId]);
 
-  // --- Mock Data for Local Items ---
-  const [invoices, setInvoices] = useState<Invoice[]>([
-    { 
-        id: 'INV-2024-001', 
-        branchId: 'BR-HQ',
-        customerName: 'John Kamau', 
-        jobId: 'JOB-2024-001', 
-        amount: 12500, 
-        date: '2023-10-25', 
-        dueDate: '2023-11-25', 
-        status: 'PAID', 
-        paymentMethod: 'MPESA', 
-        items: [{ description: 'Suspension Repair', quantity: 1, unitCost: 12500, total: 12500 }] 
-    }
-  ]);
-
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showCreateInvoiceModal, setShowCreateInvoiceModal] = useState(false);
+  
+  // Invoice Form State
   const [newInvoiceData, setNewInvoiceData] = useState({
       customerName: '',
       jobId: '',
@@ -54,38 +47,48 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
 
   // --- WORKFLOW HANDLERS ---
 
-  // 1. Convert Quote -> Sales Order
   const handleConvertQuoteToOrder = (quote: Quotation) => {
       const newOrder: SalesOrder = {
           id: `SO-${Date.now().toString().slice(-4)}`,
           quotationId: quote.id,
-          jobCardId: quote.jobId, // Pass linked Job ID if exists
+          jobCardId: quote.jobId,
           branchId: quote.branchId,
           customerName: quote.customerName,
           vehiclePlate: quote.vehiclePlate,
           date: new Date().toISOString().split('T')[0],
           totalAmount: quote.amount,
-          status: quote.jobId ? 'JOB_IN_PROGRESS' : 'PENDING_JOB', // If coming from a job, it's already in progress
+          status: quote.jobId ? 'JOB_IN_PROGRESS' : 'PENDING_JOB',
           items: quote.items
       };
 
       setSalesOrders([newOrder, ...salesOrders]);
       setQuotations(quotations.map(q => q.id === quote.id ? { ...q, status: 'CONVERTED' } : q));
       
-      // If it has a Job ID, we need to notify the parent app to update the Job status too, 
-      // but SalesOrder creation logic in App.tsx handles job updates if we call the createJob handler.
-      // However, here we are just creating the order. The App level handler `handleCreateJobFromOrder` handles logic.
-      // In this specific flow (Diagnosis -> Quote -> Order), the Job ALREADY exists.
-      // We trigger the callback to update the existing job state.
       if (quote.jobId) {
-          onCreateJob(newOrder); // Reuse this to update the existing job linkage
+          onCreateJob(newOrder);
       }
-
       setActiveTab('ORDERS');
   };
 
-  // 2. Order -> Invoice
   const handleGenerateInvoiceFromOrder = (order: SalesOrder) => {
+      // Calculate Tax Logic
+      const taxEnabled = tenantSettings?.tax.enabled ?? true;
+      const taxRate = tenantSettings?.tax.rate ?? 16;
+      
+      // Assume order total is inclusive or exclusive? 
+      // Simplified: Order Amount is subtotal, add tax if enabled. 
+      // OR: Order Amount is Total. Let's assume Order Amount is Total for simplicity in this flow,
+      // but proper tax separation happens on invoice.
+      
+      let amount = order.totalAmount;
+      let taxAmount = 0;
+
+      if (taxEnabled) {
+          // Back-calculate tax from total if it's inclusive
+          // Tax = Total - (Total / (1 + rate/100))
+          taxAmount = Math.round(amount - (amount / (1 + (taxRate / 100))));
+      }
+
       const invoice: Invoice = {
           id: `INV-${Date.now().toString().slice(-4)}`,
           salesOrderId: order.id,
@@ -94,12 +97,13 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
           jobId: order.jobCardId || 'JOB-LINKED',
           date: new Date().toISOString().split('T')[0],
           dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          amount: order.totalAmount,
+          amount: amount,
+          taxAmount: taxAmount,
           status: 'PENDING',
           items: order.items
       };
 
-      setInvoices([invoice, ...invoices]);
+      onInvoiceCreated(invoice); // Push to Global State & Finance
       
       const updatedOrders = salesOrders.map(so => 
         so.id === order.id ? { ...so, status: 'INVOICED' as const } : so
@@ -139,7 +143,11 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
 
   const calculateTotals = () => {
       const subtotal = newInvoiceData.items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
-      const vat = subtotal * 0.16;
+      
+      const taxEnabled = tenantSettings?.tax.enabled ?? true;
+      const taxRate = tenantSettings?.tax.rate ?? 16;
+      
+      const vat = taxEnabled ? (subtotal * (taxRate / 100)) : 0;
       const total = subtotal + vat;
       return { subtotal, vat, total };
   };
@@ -149,15 +157,16 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
           alert('Please fill in all required fields.');
           return;
       }
-      const { total } = calculateTotals();
+      const { total, vat } = calculateTotals();
       const invoice: Invoice = {
           id: `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000)}`,
           customerName: newInvoiceData.customerName,
-          branchId: currentBranch.id, // Assign current branch
+          branchId: currentBranch.id, 
           jobId: newInvoiceData.jobId || 'N/A',
           date: newInvoiceData.date,
           dueDate: newInvoiceData.dueDate,
           amount: total,
+          taxAmount: vat,
           status: 'PENDING',
           items: newInvoiceData.items.map(i => ({
               description: i.description,
@@ -166,25 +175,32 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
               total: i.quantity * i.unitCost
           }))
       };
-      setInvoices([invoice, ...invoices]);
+      
+      onInvoiceCreated(invoice); // Push to Global State & Finance
       setShowCreateInvoiceModal(false);
   };
 
-  const handleLocalRecordPayment = () => {
-    if (selectedInvoice) {
-        // Call the parent handler to update global GL/Accounts
-        onRecordPayment(selectedInvoice);
+  const { subtotal, vat, total } = calculateTotals();
 
-        // Update local state to reflect paid status immediately in UI
-        const updatedInvoices = invoices.map(inv => 
-            inv.id === selectedInvoice.id ? { ...inv, status: 'PAID', paymentMethod: 'MPESA' } as Invoice : inv
-        );
-        setInvoices(updatedInvoices);
-        
-        setShowPaymentModal(false);
-        setSelectedInvoice(null);
-    }
-  };
+  // Filtering
+  const branchFilteredInvoices = invoices.filter(inv => inv.branchId === currentBranch.id);
+  const branchFilteredQuotations = quotations.filter(qt => qt.branchId === currentBranch.id);
+  const branchFilteredOrders = salesOrders.filter(so => so.branchId === currentBranch.id);
+
+  const filteredInvoices = branchFilteredInvoices.filter(inv => 
+    inv.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    inv.customerName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  const filteredQuotations = branchFilteredQuotations.filter(qt => 
+    qt.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    qt.customerName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  const filteredOrders = branchFilteredOrders.filter(so => 
+    so.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    so.customerName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const getStatusStyle = (status: string) => {
     switch(status) {
@@ -199,27 +215,6 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
       default: return 'bg-gray-100 text-gray-700';
     }
   };
-
-  const { subtotal, vat, total } = calculateTotals();
-
-  // Filtering by Branch
-  const branchFilteredInvoices = invoices.filter(inv => inv.branchId === currentBranch.id);
-  const branchFilteredQuotations = quotations.filter(qt => qt.branchId === currentBranch.id);
-  const branchFilteredOrders = salesOrders.filter(so => so.branchId === currentBranch.id);
-
-  // Search Filtering
-  const filteredInvoices = branchFilteredInvoices.filter(inv => 
-    inv.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    inv.customerName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  const filteredQuotations = branchFilteredQuotations.filter(qt => 
-    qt.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    qt.customerName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  const filteredOrders = branchFilteredOrders.filter(so => 
-    so.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    so.customerName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <div className="p-8 h-full flex flex-col">
@@ -291,7 +286,7 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
                   </td>
                   <td className="p-4 text-sm text-gray-500">{qt.vehiclePlate}</td>
                   <td className="p-4 text-sm text-gray-500">{qt.date}</td>
-                  <td className="p-4 font-bold text-gray-900">KES {qt.amount.toLocaleString()}</td>
+                  <td className="p-4 font-bold text-gray-900">{tenantSettings?.currency} {qt.amount.toLocaleString()}</td>
                   <td className="p-4">
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${getStatusStyle(qt.status)}`}>
                       {qt.status}
@@ -320,7 +315,6 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
       </div>
       )}
 
-      {/* ... (Orders and Invoices tabs remain largely same but benefit from prop data) ... */}
       {/* --- SALES ORDERS TAB --- */}
       {activeTab === 'ORDERS' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col animate-in fade-in">
@@ -359,30 +353,11 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
                                 </h4>
                                 <p className="text-sm text-gray-600">{order.customerName} • {order.vehiclePlate}</p>
                             </div>
-                            <span className="font-bold text-lg text-gray-800">KES {order.totalAmount.toLocaleString()}</span>
-                        </div>
-
-                        {/* Progress Stepper */}
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-6 bg-gray-50 p-2 rounded-lg">
-                             <div className={`flex items-center gap-1 ${order.status === 'PENDING_JOB' ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
-                                 <ClipboardList size={14} /> Order
-                             </div>
-                             <ArrowRight size={12} className="text-gray-300"/>
-                             <div className={`flex items-center gap-1 ${['JOB_IN_PROGRESS', 'JOB_COMPLETED', 'READY_TO_INVOICE', 'INVOICED'].includes(order.status) ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
-                                 <Wrench size={14} /> Job
-                             </div>
-                             <ArrowRight size={12} className="text-gray-300"/>
-                             <div className={`flex items-center gap-1 ${order.status === 'READY_TO_INVOICE' || order.status === 'INVOICED' ? 'text-green-600 font-bold' : 'text-gray-400'}`}>
-                                 <PackageCheck size={14} /> Complete
-                             </div>
-                             <ArrowRight size={12} className="text-gray-300"/>
-                             <div className={`flex items-center gap-1 ${order.status === 'INVOICED' ? 'text-gray-800 font-bold' : 'text-gray-400'}`}>
-                                 <DollarSign size={14} /> Invoiced
-                             </div>
+                            <span className="font-bold text-lg text-gray-800">{tenantSettings?.currency} {order.totalAmount.toLocaleString()}</span>
                         </div>
 
                         {/* Actions */}
-                        <div className="flex justify-end gap-2 mt-2">
+                        <div className="flex justify-end gap-2 mt-4">
                             {order.status === 'PENDING_JOB' && (
                                 <button
                                     onClick={() => onCreateJob(order)}
@@ -414,7 +389,6 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
         </div>
       )}
 
-      {/* ... (Invoice Tab and Modals) ... */}
       {/* --- INVOICES TAB --- */}
       {activeTab === 'INVOICES' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col animate-in fade-in">
@@ -459,7 +433,10 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
                           </td>
                           <td className="p-4 text-sm text-gray-500">{inv.date}</td>
                           <td className="p-4 text-sm text-gray-500">{inv.dueDate}</td>
-                          <td className="p-4 font-bold text-gray-900">KES {inv.amount.toLocaleString()}</td>
+                          <td className="p-4 font-bold text-gray-900">
+                              {tenantSettings?.currency} {inv.amount.toLocaleString()}
+                              {inv.taxAmount ? <span className="block text-[10px] text-gray-400 font-normal">Inc. {tenantSettings?.currency} {inv.taxAmount.toLocaleString()} Tax</span> : null}
+                          </td>
                           <td className="p-4">
                             <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${getStatusStyle(inv.status)}`}>
                               {inv.status}
@@ -467,7 +444,6 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
                           </td>
                           <td className="p-4 flex gap-2">
                              <button className="text-gray-400 hover:text-blue-600 p-1" title="Print"><Printer size={16} /></button>
-                             <button className="text-gray-400 hover:text-blue-600 p-1" title="Email"><Send size={16} /></button>
                              {inv.status === 'PENDING' && (
                                  <button 
                                     onClick={() => { setSelectedInvoice(inv); setShowPaymentModal(true); }}
@@ -494,6 +470,7 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
                       <button onClick={() => setShowCreateInvoiceModal(false)}><X size={24} className="text-gray-400" /></button>
                   </div>
                   <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                      {/* ... Form Fields (Customer, Job, Dates) same as before ... */}
                       <div className="grid grid-cols-2 gap-4">
                           <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name</label>
@@ -572,9 +549,11 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
                       
                       <div className="bg-gray-50 p-4 rounded-lg flex justify-end">
                           <div className="text-right space-y-1">
-                              <p className="text-sm text-gray-500">Subtotal: KES {subtotal.toLocaleString()}</p>
-                              <p className="text-sm text-gray-500">VAT (16%): KES {vat.toLocaleString()}</p>
-                              <p className="font-bold text-lg text-gray-900">Total: KES {total.toLocaleString()}</p>
+                              <p className="text-sm text-gray-500">Subtotal: {tenantSettings?.currency} {subtotal.toLocaleString()}</p>
+                              {tenantSettings?.tax.enabled && (
+                                  <p className="text-sm text-gray-500">VAT ({tenantSettings.tax.rate}%): {tenantSettings.currency} {vat.toLocaleString()}</p>
+                              )}
+                              <p className="font-bold text-lg text-gray-900">Total: {tenantSettings?.currency} {total.toLocaleString()}</p>
                           </div>
                       </div>
                   </div>
@@ -596,11 +575,11 @@ const SalesManager: React.FC<SalesManagerProps> = ({ salesOrders, setSalesOrders
                        </div>
                        <h3 className="font-bold text-xl text-gray-900 mb-2">Record Payment</h3>
                        <p className="text-gray-500 mb-6">
-                           Confirm payment of <span className="font-bold text-gray-900">KES {selectedInvoice.amount.toLocaleString()}</span> for Invoice #{selectedInvoice.id}?
+                           Confirm payment of <span className="font-bold text-gray-900">{tenantSettings?.currency} {selectedInvoice.amount.toLocaleString()}</span> for Invoice #{selectedInvoice.id}?
                        </p>
                        <div className="flex gap-3">
                            <button onClick={() => setShowPaymentModal(false)} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-600 font-medium">Cancel</button>
-                           <button onClick={handleLocalRecordPayment} className="flex-1 py-2.5 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700">Confirm Paid</button>
+                           <button onClick={() => { onRecordPayment(selectedInvoice); setShowPaymentModal(false); }} className="flex-1 py-2.5 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700">Confirm Paid</button>
                        </div>
                    </div>
                </div>

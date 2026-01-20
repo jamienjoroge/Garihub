@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ClipboardCheck, Search, Plus, Camera, CheckCircle2, AlertTriangle, XCircle, FileText, BadgeCheck } from 'lucide-react';
+import { ClipboardCheck, Search, Plus, Camera, CheckCircle2, AlertTriangle, XCircle, FileText, BadgeCheck, ShieldCheck, Printer, Share2 } from 'lucide-react';
 import { generateCustomerReport } from '../services/geminiService';
 
 interface InspectionItem {
@@ -52,14 +52,32 @@ const InspectionManager: React.FC = () => {
   ]);
 
   const updateItemStatus = (id: string, status: InspectionItem['status']) => {
+    if (activeInspection?.status === 'COMPLETED') return; // Prevent edits if completed
     setChecklist(checklist.map(item => item.id === id ? { ...item, status } : item));
   };
 
   const handleGenerateReport = async () => {
     if (!activeInspection) return;
-    // Mocking report generation
-    alert("Generating Verified Inspection Certificate...");
-    setActiveInspection(null);
+    
+    // Ensure all items checked
+    if (checklist.some(i => i.status === 'PENDING')) {
+        alert("Please complete all checklist items before finalizing.");
+        return;
+    }
+
+    if (!window.confirm("Finalize this inspection? This will lock the report.")) return;
+
+    const passCount = checklist.filter(i => i.status === 'PASS').length;
+    const score = Math.round((passCount / checklist.length) * 100);
+
+    const updatedInspection: Inspection = {
+        ...activeInspection,
+        status: 'COMPLETED',
+        overallScore: score
+    };
+
+    setInspections(inspections.map(i => i.id === updatedInspection.id ? updatedInspection : i));
+    setActiveInspection(updatedInspection);
   };
 
   return (
@@ -143,63 +161,148 @@ const InspectionManager: React.FC = () => {
                         <div>
                             <div className="flex items-center gap-3">
                                 <h3 className="text-xl font-bold text-gray-900">{activeInspection.plateNumber}</h3>
-                                <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-xs font-semibold uppercase">{activeInspection.type}</span>
+                                <span className={`px-2 py-0.5 rounded text-xs font-semibold uppercase ${activeInspection.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-700'}`}>
+                                    {activeInspection.type}
+                                </span>
                             </div>
-                            <p className="text-gray-500 text-sm mt-1">Inspection in progress</p>
+                            <p className="text-gray-500 text-sm mt-1">
+                                {activeInspection.status === 'COMPLETED' ? `Certified on ${activeInspection.date}` : 'Inspection in progress'}
+                            </p>
                         </div>
-                        <div className="flex gap-2">
-                             <button className="text-gray-600 bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
-                                <Camera size={16} /> Add Photos
-                             </button>
-                             <button 
-                                onClick={handleGenerateReport}
-                                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-green-700"
-                             >
-                                <FileText size={16} /> Finalize Report
-                             </button>
-                        </div>
+                        
+                        {activeInspection.status === 'IN_PROGRESS' && (
+                            <div className="flex gap-2">
+                                <button className="text-gray-600 bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
+                                    <Camera size={16} /> Add Photos
+                                </button>
+                                <button 
+                                    onClick={handleGenerateReport}
+                                    className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-green-700"
+                                >
+                                    <FileText size={16} /> Finalize Report
+                                </button>
+                            </div>
+                        )}
+                        {activeInspection.status === 'COMPLETED' && (
+                            <div className="flex gap-2">
+                                <button className="bg-white border border-gray-200 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50">
+                                    <Share2 size={16}/> Share
+                                </button>
+                                <button className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-slate-800">
+                                    <Printer size={16}/> Print Certificate
+                                </button>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Checklist */}
-                    <div className="flex-1 overflow-y-auto p-6">
-                        <div className="space-y-6">
-                            {['Engine', 'Suspension', 'Brakes', 'Body', 'Interior'].map(cat => {
-                                const items = checklist.filter(i => i.category === cat);
-                                if (items.length === 0) return null;
-                                return (
-                                    <div key={cat} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                                        <h4 className="font-bold text-slate-700 mb-3 uppercase text-xs tracking-wider">{cat}</h4>
-                                        <div className="space-y-3">
-                                            {items.map(item => (
-                                                <div key={item.id} className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between shadow-sm">
-                                                    <span className="text-gray-700 font-medium">{item.label}</span>
-                                                    <div className="flex gap-2">
-                                                        <button 
-                                                            onClick={() => updateItemStatus(item.id, 'PASS')}
-                                                            className={`p-1.5 rounded-md transition-all ${item.status === 'PASS' ? 'bg-green-100 text-green-600 ring-2 ring-green-500' : 'text-gray-300 hover:bg-gray-100'}`}
-                                                        >
-                                                            <CheckCircle2 size={20} />
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => updateItemStatus(item.id, 'WARN')}
-                                                            className={`p-1.5 rounded-md transition-all ${item.status === 'WARN' ? 'bg-yellow-100 text-yellow-600 ring-2 ring-yellow-500' : 'text-gray-300 hover:bg-gray-100'}`}
-                                                        >
-                                                            <AlertTriangle size={20} />
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => updateItemStatus(item.id, 'FAIL')}
-                                                            className={`p-1.5 rounded-md transition-all ${item.status === 'FAIL' ? 'bg-red-100 text-red-600 ring-2 ring-red-500' : 'text-gray-300 hover:bg-gray-100'}`}
-                                                        >
-                                                            <XCircle size={20} />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
+                    {/* Main Content Area */}
+                    <div className="flex-1 overflow-y-auto">
+                        
+                        {/* --- CERTIFICATE VIEW (Read Only) --- */}
+                        {activeInspection.status === 'COMPLETED' ? (
+                            <div className="p-8 max-w-3xl mx-auto">
+                                <div className="border-4 border-double border-slate-200 p-8 rounded-xl bg-white relative">
+                                    {/* Watermark */}
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-5">
+                                        <BadgeCheck size={300}/>
+                                    </div>
+
+                                    <div className="text-center mb-8">
+                                        <h2 className="text-2xl font-bold text-slate-900 uppercase tracking-widest mb-2">Vehicle Inspection Certificate</h2>
+                                        <p className="text-slate-500">Verified by GariHub Systems</p>
+                                        <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-full font-bold border border-green-200">
+                                            <ShieldCheck size={20}/>
+                                            Overall Score: {activeInspection.overallScore}%
                                         </div>
                                     </div>
-                                )
-                            })}
-                        </div>
+
+                                    <div className="grid grid-cols-2 gap-8 mb-8 border-b border-slate-100 pb-8">
+                                        <div>
+                                            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Vehicle</p>
+                                            <p className="font-bold text-lg">{activeInspection.model}</p>
+                                            <p className="font-mono text-slate-600">{activeInspection.plateNumber}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Inspection Date</p>
+                                            <p className="font-bold text-lg">{activeInspection.date}</p>
+                                            <p className="text-slate-600">ID: {activeInspection.id}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-6">
+                                        <h4 className="font-bold text-slate-800">Key Findings</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {checklist.filter(i => i.status !== 'PASS').length === 0 ? (
+                                                <p className="text-green-600 italic col-span-2 text-center py-4">No issues detected. Vehicle passed all checks.</p>
+                                            ) : (
+                                                checklist.filter(i => i.status !== 'PASS').map(item => (
+                                                    <div key={item.id} className="flex items-start gap-3 p-3 bg-red-50 rounded-lg border border-red-100">
+                                                        {item.status === 'FAIL' ? <XCircle size={20} className="text-red-500 shrink-0"/> : <AlertTriangle size={20} className="text-orange-500 shrink-0"/>}
+                                                        <div>
+                                                            <p className="font-bold text-sm text-slate-800">{item.label}</p>
+                                                            <p className="text-xs text-slate-600 uppercase">{item.category}</p>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-8 pt-8 border-t border-slate-100 flex justify-between items-end">
+                                        <div className="text-center">
+                                            <div className="h-12 w-32 border-b border-slate-300 mb-2"></div>
+                                            <p className="text-xs text-slate-400 uppercase">Authorized Inspector</p>
+                                        </div>
+                                        <div className="w-24 h-24 bg-slate-100 rounded-lg flex items-center justify-center">
+                                            <div className="w-16 h-16 bg-slate-800 rounded-lg"></div> 
+                                            {/* QR Code Placeholder */}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            /* --- CHECKLIST WORKSPACE (Editable) --- */
+                            <div className="p-6">
+                                <div className="space-y-6">
+                                    {['Engine', 'Suspension', 'Brakes', 'Body', 'Interior'].map(cat => {
+                                        const items = checklist.filter(i => i.category === cat);
+                                        if (items.length === 0) return null;
+                                        return (
+                                            <div key={cat} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                                <h4 className="font-bold text-slate-700 mb-3 uppercase text-xs tracking-wider">{cat}</h4>
+                                                <div className="space-y-3">
+                                                    {items.map(item => (
+                                                        <div key={item.id} className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between shadow-sm">
+                                                            <span className="text-gray-700 font-medium">{item.label}</span>
+                                                            <div className="flex gap-2">
+                                                                <button 
+                                                                    onClick={() => updateItemStatus(item.id, 'PASS')}
+                                                                    className={`p-1.5 rounded-md transition-all ${item.status === 'PASS' ? 'bg-green-100 text-green-600 ring-2 ring-green-500' : 'text-gray-300 hover:bg-gray-100'}`}
+                                                                >
+                                                                    <CheckCircle2 size={20} />
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => updateItemStatus(item.id, 'WARN')}
+                                                                    className={`p-1.5 rounded-md transition-all ${item.status === 'WARN' ? 'bg-yellow-100 text-yellow-600 ring-2 ring-yellow-500' : 'text-gray-300 hover:bg-gray-100'}`}
+                                                                >
+                                                                    <AlertTriangle size={20} />
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => updateItemStatus(item.id, 'FAIL')}
+                                                                    className={`p-1.5 rounded-md transition-all ${item.status === 'FAIL' ? 'bg-red-100 text-red-600 ring-2 ring-red-500' : 'text-gray-300 hover:bg-gray-100'}`}
+                                                                >
+                                                                    <XCircle size={20} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
                  </>
              ) : (

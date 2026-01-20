@@ -18,6 +18,24 @@ export interface Branch {
   isHeadquarters: boolean;
 }
 
+export interface TenantSettings {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  currency: string;
+  tax: {
+    enabled: boolean; // VAT Compliance
+    rate: number;     // e.g., 16
+    pin?: string;     // KRA PIN
+  };
+  branding: {
+    logoUrl?: string;
+    colors?: { primary: string };
+  };
+  invoiceTerms: string;
+}
+
 export interface ServicePackage {
   id: string;
   name: string; // e.g. "Minor Service"
@@ -119,7 +137,8 @@ export interface Invoice {
   projectId?: string; // Linked Restoration Project
   salesOrderId?: string; // Link to Sales Order
   branchId: string;
-  amount: number;
+  amount: number; // Inclusive of Tax
+  taxAmount?: number; // Explicit Tax Portion
   date: string;
   dueDate: string;
   status: 'PAID' | 'PENDING' | 'OVERDUE';
@@ -244,7 +263,7 @@ export type Department = 'WORKSHOP' | 'FRONT_OFFICE' | 'FINANCE' | 'OPERATIONS' 
 export interface Employee {
   id: string;
   name: string;
-  branchId: string; // Tenant boundary for employee
+  branchIds: string[]; // Multi-branch assignments permissible
   role: EmployeeRole; // System Access Level
   department: Department;
   jobTitle: string; // Specific Position (e.g. Senior Mechanic)
