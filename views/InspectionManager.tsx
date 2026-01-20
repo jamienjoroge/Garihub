@@ -1,46 +1,14 @@
 import React, { useState } from 'react';
 import { ClipboardCheck, Search, Plus, Camera, CheckCircle2, AlertTriangle, XCircle, FileText, BadgeCheck, ShieldCheck, Printer, Share2 } from 'lucide-react';
-import { generateCustomerReport } from '../services/geminiService';
+import { Inspection, InspectionItem } from '../types';
 
-interface InspectionItem {
-  id: string;
-  category: string;
-  label: string;
-  status: 'PASS' | 'FAIL' | 'WARN' | 'PENDING';
-  note?: string;
+interface InspectionManagerProps {
+    inspections: Inspection[];
+    setInspections: (inspections: Inspection[]) => void;
 }
 
-interface Inspection {
-  id: string;
-  plateNumber: string;
-  model: string;
-  type: 'PRE-PURCHASE' | 'SAFETY' | 'VALUATION';
-  status: 'IN_PROGRESS' | 'COMPLETED';
-  date: string;
-  overallScore?: number;
-}
-
-const InspectionManager: React.FC = () => {
-  const [inspections, setInspections] = useState<Inspection[]>([
-    {
-      id: 'INS-2024-001',
-      plateNumber: 'KDK 999L',
-      model: 'Nissan X-Trail',
-      type: 'PRE-PURCHASE',
-      status: 'IN_PROGRESS',
-      date: '2023-10-27'
-    },
-    {
-      id: 'INS-2024-002',
-      plateNumber: 'KCC 234P',
-      model: 'Toyota Prado',
-      type: 'VALUATION',
-      status: 'COMPLETED',
-      date: '2023-10-25',
-      overallScore: 88
-    }
-  ]);
-
+const InspectionManager: React.FC<InspectionManagerProps> = ({ inspections, setInspections }) => {
+  // Local state only for the active working session
   const [activeInspection, setActiveInspection] = useState<Inspection | null>(null);
   const [checklist, setChecklist] = useState<InspectionItem[]>([
     { id: '1', category: 'Engine', label: 'Oil Level & Quality', status: 'PENDING' },
@@ -51,9 +19,47 @@ const InspectionManager: React.FC = () => {
     { id: '6', category: 'Interior', label: 'Dashboard Warnings', status: 'PENDING' },
   ]);
 
+  const startNewInspection = () => {
+      const newInsp: Inspection = {
+          id: `INS-${Date.now()}`,
+          plateNumber: 'NEW',
+          model: 'Unknown',
+          type: 'PRE-PURCHASE',
+          status: 'IN_PROGRESS',
+          date: new Date().toISOString().split('T')[0]
+      };
+      // Don't add to main list until finalized or saved draft? 
+      // For simplicity, add immediately to list as In Progress
+      setInspections([newInsp, ...inspections]);
+      setActiveInspection(newInsp);
+      // Reset checklist for new inspection
+      setChecklist(checklist.map(i => ({...i, status: 'PENDING'}))); 
+  };
+
+  const openInspection = (ins: Inspection) => {
+      setActiveInspection(ins);
+      // If it has saved checklist data, load it (mock logic for now since checklist isn't fully in type yet, assume default or persisted)
+      // For this prototype, we'll just reset if it's a different one, or if persisted data existed we'd load it.
+      // Ideally Inspection type should have `checklist` property. I added it to types.ts.
+      if (ins.checklist) {
+          setChecklist(ins.checklist);
+      } else {
+          // Reset default if no saved data
+           setChecklist(checklist.map(i => ({...i, status: 'PENDING'}))); 
+      }
+  };
+
   const updateItemStatus = (id: string, status: InspectionItem['status']) => {
     if (activeInspection?.status === 'COMPLETED') return; // Prevent edits if completed
-    setChecklist(checklist.map(item => item.id === id ? { ...item, status } : item));
+    const newChecklist = checklist.map(item => item.id === id ? { ...item, status } : item);
+    setChecklist(newChecklist);
+    
+    // Auto-save progress to global state
+    if (activeInspection) {
+        const updated = { ...activeInspection, checklist: newChecklist };
+        setInspections(inspections.map(i => i.id === activeInspection.id ? updated : i));
+        setActiveInspection(updated);
+    }
   };
 
   const handleGenerateReport = async () => {
@@ -73,7 +79,8 @@ const InspectionManager: React.FC = () => {
     const updatedInspection: Inspection = {
         ...activeInspection,
         status: 'COMPLETED',
-        overallScore: score
+        overallScore: score,
+        checklist: checklist
     };
 
     setInspections(inspections.map(i => i.id === updatedInspection.id ? updatedInspection : i));
@@ -89,14 +96,7 @@ const InspectionManager: React.FC = () => {
         </div>
         {!activeInspection && (
           <button 
-            onClick={() => setActiveInspection({
-                id: `INS-${Date.now()}`,
-                plateNumber: 'NEW',
-                model: 'Unknown',
-                type: 'PRE-PURCHASE',
-                status: 'IN_PROGRESS',
-                date: new Date().toISOString().split('T')[0]
-            })}
+            onClick={startNewInspection}
             className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm transition-all"
           >
             <Plus size={20} />
@@ -131,7 +131,7 @@ const InspectionManager: React.FC = () => {
                     inspections.map(ins => (
                         <div 
                             key={ins.id} 
-                            onClick={() => setActiveInspection(ins)}
+                            onClick={() => openInspection(ins)}
                             className={`p-4 border-b border-gray-50 cursor-pointer hover:bg-slate-50 transition-colors ${activeInspection?.id === ins.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
                         >
                             <div className="flex justify-between items-start mb-1">

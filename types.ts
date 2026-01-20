@@ -445,6 +445,26 @@ export interface RestorationProject {
     updates: ProjectUpdate[];
 }
 
+// --- INSPECTIONS ---
+export interface InspectionItem {
+  id: string;
+  category: string;
+  label: string;
+  status: 'PASS' | 'FAIL' | 'WARN' | 'PENDING';
+  note?: string;
+}
+
+export interface Inspection {
+  id: string;
+  plateNumber: string;
+  model: string;
+  type: 'PRE-PURCHASE' | 'SAFETY' | 'VALUATION';
+  status: 'IN_PROGRESS' | 'COMPLETED';
+  date: string;
+  overallScore?: number;
+  checklist?: InspectionItem[]; // Added for persistence
+}
+
 export type ViewState = 'DASHBOARD' | 'JOBS' | 'INSPECTIONS' | 'VEHICLES' | 'CUSTOMERS' | 'SALES' | 'FINANCE' | 'INVENTORY' | 'HR' | 'CUSTOMER_PORTAL' | 'SETTINGS' | 'PROJECTS' | 'ASSETS';
 export type UserRole = 'MANAGER' | 'RECEPTIONIST' | 'TECHNICIAN' | 'INSPECTOR' | 'CUSTOMER';
 

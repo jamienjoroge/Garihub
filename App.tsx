@@ -13,7 +13,7 @@ import HRManager from './views/HRManager';
 import SettingsManager from './views/SettingsManager';
 import ProjectManager from './views/ProjectManager';
 import AssetManager from './views/AssetManager';
-import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment, Employee, TenantSettings } from './types';
+import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment, Employee, TenantSettings, Inspection } from './types';
 import { ShieldAlert } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -191,6 +191,27 @@ const App: React.FC = () => {
           status: 'MAINTENANCE',
           maintenanceLog: []
       }
+  ]);
+
+  // --- INSPECTIONS STATE (Lifted for Persistence) ---
+  const [inspections, setInspections] = useState<Inspection[]>([
+    {
+      id: 'INS-2024-001',
+      plateNumber: 'KDK 999L',
+      model: 'Nissan X-Trail',
+      type: 'PRE-PURCHASE',
+      status: 'IN_PROGRESS',
+      date: '2023-10-27'
+    },
+    {
+      id: 'INS-2024-002',
+      plateNumber: 'KCC 234P',
+      model: 'Toyota Prado',
+      type: 'VALUATION',
+      status: 'COMPLETED',
+      date: '2023-10-25',
+      overallScore: 88
+    }
   ]);
 
   // --- NAVIGATION HIGHLIGHT STATE ---
@@ -703,7 +724,10 @@ const App: React.FC = () => {
             setInvoices={setInvoices}
         />;
       case 'INSPECTIONS':
-        return <InspectionManager />;
+        return <InspectionManager 
+            inspections={inspections} 
+            setInspections={setInspections}
+        />;
       case 'CUSTOMERS':
         return <CustomerManager userRole={role} customers={customers} setCustomers={setCustomers} />;
       case 'SALES':

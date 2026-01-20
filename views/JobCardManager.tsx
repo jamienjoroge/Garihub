@@ -37,6 +37,10 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
   const [workflowTab, setWorkflowTab] = useState<'OVERVIEW' | 'DIAGNOSIS' | 'PARTS' | 'LABOR'>('OVERVIEW');
   const [showReport, setShowReport] = useState(false);
 
+  // --- Async & Error States ---
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   // --- Check-In Modal States ---
   const [checkInMode, setCheckInMode] = useState<'SERVICE' | 'DIAGNOSIS'>('SERVICE');
   const [selectedPackageId, setSelectedPackageId] = useState('');
@@ -57,7 +61,6 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
   }, [highlightedJobId, jobs]);
 
   // ... (Keep existing Appointments, Form States, Actions, Diagnoses logic same as before) ...
-  // Re-declaring for context continuity
   const [appointments, setAppointments] = useState<Appointment[]>([
       { id: 'APT-001', customerName: 'Alice W.', vehiclePlate: 'KBA 111A', date: '2023-11-02', time: '09:00', serviceType: 'Full Service', status: 'CONFIRMED', phone: '0712345678' },
       { id: 'APT-002', customerName: 'Bob M.', vehiclePlate: 'KCC 222B', date: '2023-11-02', time: '11:00', serviceType: 'Brake Check', status: 'PENDING', phone: '0722334455' }
@@ -71,7 +74,6 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
   const [selectedTech, setSelectedTech] = useState('');
   const [selectedBay, setSelectedBay] = useState('');
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
-  const [isAiLoading, setIsAiLoading] = useState(false);
   const [newDiagnosis, setNewDiagnosis] = useState<Partial<DiagnosisItem>>({ description: '', severity: 'MEDIUM', proposedFix: '', estimatedLaborCost: 0, estimatedPartCost: 0 });
   const [partSearch, setPartSearch] = useState('');
   const [selectedPartId, setSelectedPartId] = useState('');
@@ -104,11 +106,6 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
       p.branchId === currentBranch.id
   );
 
-  // ... (Insert Handlers: handleCreateJob, handleAddDiagnosisItem, handleGenerateQuoteAction, handleCreateAppointment, openWorkflowModal, handleClockIn, handleClockOut, handleAddPartToJob, handleUpdateStatus, handleAiDiagnose) ...
-  // NOTE: For brevity in this diff, assuming handlers exist as per previous implementation.
-  // I will just add the Report View component at the end of the render.
-
-  // Re-implementing handlers for correctness in this file block
   const handleCreateJob = () => {
     if (!newPlate || !newModel || !newOwner) { alert("Please fill in basic vehicle details."); return; }
     const newJob: JobCard = {
@@ -151,11 +148,77 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
       onUpdateJob(updatedJob); setServiceBays(updatedBays); setIsWorkflowModalOpen(false);
   };
 
-  // ... (Other handlers omitted for brevity, assume present from previous turn) ...
   const handleAddDiagnosisItem = () => { if(newDiagnosis.description && workflowJob) { const item: DiagnosisItem = { id: `DX-${Date.now()}`, description: newDiagnosis.description!, severity: newDiagnosis.severity as any, proposedFix: newDiagnosis.proposedFix, estimatedLaborCost: Number(newDiagnosis.estimatedLaborCost)||0, estimatedPartCost: Number(newDiagnosis.estimatedPartCost)||0 }; const updatedJob = { ...workflowJob, diagnosis: [...(workflowJob.diagnosis || []), item] }; setWorkflowJob(updatedJob); onUpdateJob(updatedJob); setNewDiagnosis({ description: '', severity: 'MEDIUM', proposedFix: '', estimatedLaborCost: 0, estimatedPartCost: 0 }); } };
-  const handleAddPartToJob = () => { if(workflowJob && selectedPartId) { const part = inventory.find(p => p.id === selectedPartId); if(part) { const updatedJob = { ...workflowJob, partsUsed: [...(workflowJob.partsUsed || []), { productId: part.id, name: part.name, quantity: addQuantity, cost: part.buyPrice, sellPrice: part.sellPrice }] }; setWorkflowJob(updatedJob); onUpdateJob(updatedJob); } } };
+  
+  // --- INVENTORY LINKAGE HANDLER ---
+  const handleAddPartToJob = () => {
+      if (!workflowJob || !selectedPartId) return;
+      
+      const partIndex = inventory.findIndex(p => p.id === selectedPartId);
+      if (partIndex === -1) {
+          alert("Part not found.");
+          return;
+      }
+      
+      const part = inventory[partIndex];
+      
+      // 1. Validate Stock
+      if (part.stockLevel < addQuantity) {
+          alert(`Insufficient stock! Only ${part.stockLevel} units of ${part.name} available.`);
+          return;
+      }
+
+      // 2. Update Inventory (Decrement)
+      const updatedInventory = [...inventory];
+      updatedInventory[partIndex] = {
+          ...part,
+          stockLevel: part.stockLevel - addQuantity
+      };
+      setInventory(updatedInventory);
+
+      // 3. Update Job (Add to partsUsed)
+      const newPartItem = { 
+          productId: part.id, 
+          name: part.name, 
+          quantity: addQuantity, 
+          cost: part.buyPrice, 
+          sellPrice: part.sellPrice 
+      };
+      
+      const updatedJob = { 
+          ...workflowJob, 
+          partsUsed: [...(workflowJob.partsUsed || []), newPartItem] 
+      };
+      
+      setWorkflowJob(updatedJob);
+      onUpdateJob(updatedJob);
+      
+      // Reset Selection
+      setSelectedPartId('');
+      setAddQuantity(1);
+      setPartSearch('');
+  };
+
   const handleCreateAppointment = () => { setIsAptModalOpen(false); }; // Mock
-  const handleAiDiagnose = async () => { setIsAiLoading(true); setTimeout(() => { setAiSuggestion("Check spark plugs."); setIsAiLoading(false); }, 1000); };
+  
+  // --- AI HANDLER WITH ERROR HANDLING ---
+  const handleAiDiagnose = async () => {
+      if(!workflowJob) return;
+      setIsAiLoading(true);
+      setAiError(null);
+      setAiSuggestion(null);
+      
+      try {
+          const suggestion = await diagnoseIssue(workflowJob.vehicle.model, workflowJob.issueDescription);
+          setAiSuggestion(suggestion);
+      } catch (error) {
+          console.error("AI Error:", error);
+          setAiError("Failed to generate diagnosis. Please try again or check internet connection.");
+      } finally {
+          setIsAiLoading(false);
+      }
+  };
+
   const handleGenerateQuoteAction = () => { if(workflowJob) { onGenerateQuote(workflowJob); setIsWorkflowModalOpen(false); } };
   const handleClockIn = () => { if(workflowJob) { const updatedJob = {...workflowJob, laborLogs: [...(workflowJob.laborLogs||[]), {id: `L-${Date.now()}`, technicianId: workflowJob.technicianId!, technicianName: workflowJob.technicianName!, startTime: new Date().toISOString(), hourlyRate: 500, cost: 0}]}; setWorkflowJob(updatedJob); onUpdateJob(updatedJob); }};
   const handleClockOut = (id: string) => { if(workflowJob) { const updatedJob = {...workflowJob, laborLogs: workflowJob.laborLogs?.map(l => l.id === id ? {...l, endTime: new Date().toISOString(), durationMinutes: 60, cost: 500} : l)}; setWorkflowJob(updatedJob); onUpdateJob(updatedJob!); }};
@@ -386,7 +449,7 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
                         </div>
 
                         <div className="p-6 space-y-6">
-                            {/* Re-implementing simplified Workflow Content from previous turn */}
+                            {/* OVERVIEW TAB */}
                             {workflowTab === 'OVERVIEW' && (
                                 <div className="space-y-4">
                                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
@@ -405,10 +468,147 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
                                 </div>
                             )}
                             
-                            {/* ... Other Tabs (Diagnosis, Parts, Labor) implementation remains same as previous turn ... */}
-                            {workflowTab === 'DIAGNOSIS' && <div>Diagnosis UI</div>}
-                            {workflowTab === 'PARTS' && <div>Parts UI</div>}
-                            {workflowTab === 'LABOR' && <div>Labor UI</div>}
+                            {/* DIAGNOSIS TAB */}
+                            {workflowTab === 'DIAGNOSIS' && (
+                                <div className="space-y-4">
+                                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
+                                        <h4 className="font-bold text-blue-800 flex items-center gap-2 mb-2"><BrainCircuit size={18}/> AI Assistant</h4>
+                                        <p className="text-sm text-blue-700 mb-3">
+                                            {aiSuggestion ? aiSuggestion : "Need help diagnosing? Tap below for AI analysis."}
+                                        </p>
+                                        {aiError && (
+                                            <div className="mb-3 p-2 bg-red-100 text-red-700 text-xs rounded border border-red-200">
+                                                {aiError}
+                                            </div>
+                                        )}
+                                        <button 
+                                            onClick={handleAiDiagnose} 
+                                            disabled={isAiLoading}
+                                            className="text-xs bg-white text-blue-600 border border-blue-200 px-3 py-1.5 rounded font-medium shadow-sm hover:bg-blue-50 disabled:opacity-70 flex items-center gap-2"
+                                        >
+                                            {isAiLoading ? <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div> : <BrainCircuit size={14}/>}
+                                            {isAiLoading ? 'Analyzing...' : 'Generate Diagnosis'}
+                                        </button>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {workflowJob.diagnosis?.map(d => (
+                                            <div key={d.id} className="p-3 bg-white border rounded-lg shadow-sm">
+                                                <div className="flex justify-between">
+                                                    <span className="font-medium text-gray-800">{d.description}</span>
+                                                    <span className="text-xs bg-gray-100 px-2 py-1 rounded">{d.severity}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">Fix: {d.proposedFix}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="pt-2 border-t border-gray-100">
+                                        <input type="text" placeholder="Observation" className="w-full border rounded-lg p-2 mb-2 text-sm" value={newDiagnosis.description} onChange={(e) => setNewDiagnosis({...newDiagnosis, description: e.target.value})} />
+                                        <input type="text" placeholder="Proposed Fix" className="w-full border rounded-lg p-2 mb-2 text-sm" value={newDiagnosis.proposedFix} onChange={(e) => setNewDiagnosis({...newDiagnosis, proposedFix: e.target.value})} />
+                                        <button onClick={handleAddDiagnosisItem} className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium">Add Finding</button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* PARTS TAB */}
+                            {workflowTab === 'PARTS' && (
+                                <div className="space-y-4">
+                                    <div className="bg-gray-50 p-4 rounded-xl">
+                                        <h4 className="font-bold text-gray-700 text-sm mb-3">Requisition Parts</h4>
+                                        <div className="flex gap-2 mb-2">
+                                            <input 
+                                                type="text" 
+                                                placeholder="Search part..." 
+                                                className="flex-1 border rounded-lg p-2 text-sm"
+                                                value={partSearch}
+                                                onChange={(e) => setPartSearch(e.target.value)}
+                                            />
+                                            <input 
+                                                type="number" 
+                                                className="w-20 border rounded-lg p-2 text-sm"
+                                                value={addQuantity}
+                                                min={1}
+                                                onChange={(e) => setAddQuantity(parseInt(e.target.value) || 1)}
+                                            />
+                                        </div>
+                                        {partSearch && (
+                                            <div className="max-h-32 overflow-y-auto bg-white border rounded-lg mb-2 shadow-sm">
+                                                {filteredParts.map(p => (
+                                                    <div 
+                                                        key={p.id} 
+                                                        onClick={() => { setSelectedPartId(p.id); setPartSearch(p.name); }}
+                                                        className="p-2 hover:bg-blue-50 cursor-pointer text-sm border-b last:border-0"
+                                                    >
+                                                        <div className="font-medium text-gray-800">{p.name}</div>
+                                                        <div className="text-xs text-gray-500 flex justify-between">
+                                                            <span>SKU: {p.sku}</span>
+                                                            <span className={p.stockLevel < addQuantity ? 'text-red-500 font-bold' : 'text-green-600'}>
+                                                                Stock: {p.stockLevel}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <button 
+                                            onClick={handleAddPartToJob}
+                                            disabled={!selectedPartId}
+                                            className="w-full bg-orange-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+                                        >
+                                            Add to Job
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="space-y-2">
+                                        {workflowJob.partsUsed?.map((part, idx) => (
+                                            <div key={idx} className="flex justify-between items-center p-3 bg-white border rounded-lg">
+                                                <div>
+                                                    <p className="text-sm font-medium text-gray-800">{part.name}</p>
+                                                    <p className="text-xs text-gray-500">Qty: {part.quantity} x {part.sellPrice}</p>
+                                                </div>
+                                                <span className="font-bold text-gray-900 text-sm">{(part.quantity * part.sellPrice).toLocaleString()}</span>
+                                            </div>
+                                        ))}
+                                        {(!workflowJob.partsUsed || workflowJob.partsUsed.length === 0) && (
+                                            <p className="text-center text-gray-400 text-sm py-4">No parts added.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* LABOR TAB */}
+                            {workflowTab === 'LABOR' && (
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button onClick={handleClockIn} className="bg-green-100 text-green-700 py-3 rounded-lg font-bold flex flex-col items-center justify-center hover:bg-green-200">
+                                            <Play size={20} className="mb-1"/> Clock In
+                                        </button>
+                                        <button className="bg-red-100 text-red-700 py-3 rounded-lg font-bold flex flex-col items-center justify-center hover:bg-red-200">
+                                            <StopCircle size={20} className="mb-1"/> Clock Out
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2 mt-4">
+                                        {workflowJob.laborLogs?.map(log => (
+                                            <div key={log.id} className="p-3 bg-white border rounded-lg flex justify-between items-center">
+                                                <div>
+                                                    <p className="text-sm font-medium text-gray-800">{log.technicianName}</p>
+                                                    <p className="text-xs text-gray-500">
+                                                        {new Date(log.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 
+                                                        {log.endTime ? ` - ${new Date(log.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : ' (Active)'}
+                                                    </p>
+                                                </div>
+                                                {log.endTime ? (
+                                                    <span className="text-sm font-bold text-gray-900">{log.durationMinutes}m</span>
+                                                ) : (
+                                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded animate-pulse">Running</span>
+                                                )}
+                                                {!log.endTime && (
+                                                    <button onClick={() => handleClockOut(log.id)} className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-1 rounded">Stop</button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50 sticky bottom-0 z-10">
