@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Search, Car, History, FileText, PenTool, Shield, User, Fuel, GitCommit, Database, Plus, X, FolderOpen } from 'lucide-react';
-import { Vehicle } from '../types';
+import { Vehicle, JobCard, Inspection } from '../types';
 
 interface VehicleRegistryProps {
     vehicles: Vehicle[];
     setVehicles: (vehicles: Vehicle[]) => void;
+    jobs?: JobCard[];
+    inspections?: Inspection[];
 }
 
 interface VehicleTimelineEvent {
@@ -13,11 +15,11 @@ interface VehicleTimelineEvent {
   date: string;
   title: string;
   description: string;
-  mileage: number;
+  mileage?: number;
   garage: string;
 }
 
-const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles }) => {
+const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles, jobs = [], inspections = [] }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -39,26 +41,51 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
     v.ownerName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const mockTimeline: VehicleTimelineEvent[] = [
-    {
-        id: 'EV-1',
-        type: 'SERVICE',
-        date: '2023-10-25',
-        title: 'Periodic Maintenance',
-        description: 'Oil change, filter replacement, brake check.',
-        mileage: 85400,
-        garage: 'GariHub Main'
-    },
-    {
-        id: 'EV-2',
-        type: 'INSPECTION',
-        date: '2023-06-12',
-        title: 'Safety Inspection',
-        description: 'Passed 45/50 checks. Minor suspension wear noted.',
-        mileage: 79200,
-        garage: 'GariHub Main'
-    }
-  ];
+  // Generate Timeline from Props
+  const getTimeline = (vehicleId: string): VehicleTimelineEvent[] => {
+      const vehicle = vehicles.find(v => v.id === vehicleId);
+      if (!vehicle) return [];
+
+      const timeline: VehicleTimelineEvent[] = [];
+
+      // Add Jobs
+      jobs.filter(j => j.vehicle.plateNumber === vehicle.plateNumber).forEach(j => {
+          timeline.push({
+              id: j.id,
+              type: 'SERVICE',
+              date: j.entryDate.split('T')[0],
+              title: j.issueDescription,
+              description: `Status: ${j.status}. Technician: ${j.technicianName || 'Pending'}. Cost: KES ${j.estimatedCost}`,
+              garage: 'GariHub Branch' // In real app, match branch ID
+          });
+      });
+
+      // Add Inspections
+      inspections.filter(i => i.plateNumber === vehicle.plateNumber).forEach(i => {
+          timeline.push({
+              id: i.id,
+              type: 'INSPECTION',
+              date: i.date,
+              title: `${i.type} Inspection`,
+              description: `Overall Score: ${i.overallScore || 'Pending'}%. Status: ${i.status}`,
+              garage: 'GariHub Inspection Center'
+          });
+      });
+
+      // Add Registration (Mock initial event based on vehicle data)
+      timeline.push({
+          id: 'REG-INIT',
+          type: 'OWNERSHIP_CHANGE',
+          date: new Date().toISOString().split('T')[0], // Mock date
+          title: 'Vehicle Registration',
+          description: `Registered to ${vehicle.ownerName}`,
+          garage: 'NTSA'
+      });
+
+      return timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  };
+
+  const currentTimeline = selectedVehicle ? getTimeline(selectedVehicle.id) : [];
 
   const getEventIcon = (type: string) => {
     switch (type) {
@@ -236,28 +263,34 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
                         </h3>
                         
                         <div className="relative pl-8 border-l-2 border-gray-100 space-y-8">
-                            {mockTimeline.map((event) => (
-                                <div key={event.id} className="relative">
-                                    <div className={`absolute -left-[41px] p-2 rounded-full border-2 border-white shadow-sm ${getEventColor(event.type)}`}>
-                                        {getEventIcon(event.type)}
-                                    </div>
-                                    <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div>
-                                                <h4 className="font-bold text-gray-900">{event.title}</h4>
-                                                <p className="text-sm text-gray-500">{event.garage}</p>
+                            {currentTimeline.length > 0 ? (
+                                currentTimeline.map((event) => (
+                                    <div key={event.id} className="relative">
+                                        <div className={`absolute -left-[41px] p-2 rounded-full border-2 border-white shadow-sm ${getEventColor(event.type)}`}>
+                                            {getEventIcon(event.type)}
+                                        </div>
+                                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <h4 className="font-bold text-gray-900">{event.title}</h4>
+                                                    <p className="text-sm text-gray-500">{event.garage}</p>
+                                                </div>
+                                                <span className="text-xs font-mono font-medium bg-gray-100 px-2 py-1 rounded text-gray-600">
+                                                    {event.date}
+                                                </span>
                                             </div>
-                                            <span className="text-xs font-mono font-medium bg-gray-100 px-2 py-1 rounded text-gray-600">
-                                                {event.date}
-                                            </span>
-                                        </div>
-                                        <p className="text-gray-700 text-sm mb-3">{event.description}</p>
-                                        <div className="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 inline-flex px-2 py-1 rounded">
-                                            <span className="font-bold">Mileage:</span> {event.mileage.toLocaleString()} km
+                                            <p className="text-gray-700 text-sm mb-3">{event.description}</p>
+                                            {event.mileage && (
+                                                <div className="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 inline-flex px-2 py-1 rounded">
+                                                    <span className="font-bold">Mileage:</span> {event.mileage.toLocaleString()} km
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))
+                            ) : (
+                                <p className="text-gray-400 text-sm">No history events recorded yet.</p>
+                            )}
                         </div>
                     </div>
 

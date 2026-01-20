@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, UserPlus, Search, Phone, Mail, Car, MessageSquare, Send, Check, AlertTriangle, ArrowRight, UserCheck, ShieldCheck, X, DollarSign, TrendingUp, Calendar, Briefcase, History, Star, Clock, Filter, Plus, FileText, ChevronRight, Activity, Tag, Sparkles, Wrench } from 'lucide-react';
+import { Users, UserPlus, Search, Phone, Mail, Car, MessageSquare, Send, Check, AlertTriangle, ArrowRight, UserCheck, ShieldCheck, X, DollarSign, TrendingUp, Calendar, Briefcase, History, Star, Clock, Filter, Plus, FileText, ChevronRight, Activity, Tag, Sparkles, Wrench, Loader2 } from 'lucide-react';
 import { Customer, Vehicle, UserRole, CustomerInteraction, CustomerSegment } from '../types';
 import { generateMarketingMessage } from '../services/geminiService';
 
@@ -16,6 +16,7 @@ const CustomerManager: React.FC<CustomerManagerProps> = ({ userRole, customers, 
   const [showMarketingModal, setShowMarketingModal] = useState(false);
   const [marketingMessage, setMarketingMessage] = useState('');
   const [isGeneratingMsg, setIsGeneratingMsg] = useState(false);
+  const [marketingError, setMarketingError] = useState<string | null>(null);
   
   // Detail View State
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -170,9 +171,19 @@ const CustomerManager: React.FC<CustomerManagerProps> = ({ userRole, customers, 
 
   const generateCampaign = async (type: string) => {
     setIsGeneratingMsg(true);
-    const msg = await generateMarketingMessage(type, selectedCustomer?.name || 'Customer');
-    setMarketingMessage(msg);
-    setIsGeneratingMsg(false);
+    setMarketingError(null);
+    try {
+        const msg = await generateMarketingMessage(type, selectedCustomer?.name || 'Customer');
+        // Check for AI failure fallback string
+        if (msg.toLowerCase().includes("unavailable")) {
+             throw new Error(msg);
+        }
+        setMarketingMessage(msg);
+    } catch (err) {
+        setMarketingError("Failed to generate content via AI. Please try again later.");
+    } finally {
+        setIsGeneratingMsg(false);
+    }
   };
 
   const filteredCustomers = customers.filter(cust => {
@@ -629,22 +640,36 @@ const CustomerManager: React.FC<CustomerManagerProps> = ({ userRole, customers, 
                   </div>
                   <div className="p-6 space-y-4">
                       <p className="text-sm text-gray-600">Generate a personalized SMS for {selectedCustomer ? selectedCustomer.name : 'your segment'}.</p>
+                      
+                      {marketingError && (
+                          <div className="bg-red-50 text-red-600 text-xs p-3 rounded-lg flex items-center gap-2">
+                              <AlertTriangle size={14} />
+                              {marketingError}
+                          </div>
+                      )}
+
                       <div className="flex flex-wrap gap-2">
-                          <button onClick={() => generateCampaign('service_reminder')} className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-100 hover:bg-blue-100">Service Due</button>
-                          <button onClick={() => generateCampaign('rainy_season')} className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-100 hover:bg-blue-100">Rainy Season</button>
-                          <button onClick={() => generateCampaign('holiday_promo')} className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-100 hover:bg-blue-100">Holiday Offer</button>
+                          <button onClick={() => generateCampaign('service_reminder')} disabled={isGeneratingMsg} className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-100 hover:bg-blue-100 disabled:opacity-50">Service Due</button>
+                          <button onClick={() => generateCampaign('rainy_season')} disabled={isGeneratingMsg} className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-100 hover:bg-blue-100 disabled:opacity-50">Rainy Season</button>
+                          <button onClick={() => generateCampaign('holiday_promo')} disabled={isGeneratingMsg} className="text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-100 hover:bg-blue-100 disabled:opacity-50">Holiday Offer</button>
                       </div>
                       <div className="relative">
                           <textarea 
                               className="w-full border border-gray-300 rounded-lg p-3 text-sm h-32 focus:ring-2 focus:ring-purple-200 focus:border-purple-400 outline-none transition-all"
-                              value={isGeneratingMsg ? 'Generating magic...' : marketingMessage}
+                              value={isGeneratingMsg ? '' : marketingMessage}
                               onChange={(e) => setMarketingMessage(e.target.value)}
-                              placeholder="Your message will appear here..."
+                              placeholder={isGeneratingMsg ? "AI is writing..." : "Your message will appear here..."}
+                              disabled={isGeneratingMsg}
                           ></textarea>
-                          {isGeneratingMsg && <div className="absolute inset-0 bg-white/50 flex items-center justify-center"><div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div></div>}
+                          {isGeneratingMsg && (
+                              <div className="absolute inset-0 bg-white/50 flex flex-col items-center justify-center backdrop-blur-[1px] rounded-lg">
+                                  <Loader2 className="w-6 h-6 text-purple-600 animate-spin mb-2" />
+                                  <span className="text-xs text-purple-600 font-medium">Drafting...</span>
+                              </div>
+                          )}
                       </div>
-                      <button className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold shadow-md hover:bg-slate-800 transition-transform hover:scale-[1.02]">
-                          Send Campaign <Send size={16} className="inline ml-2"/>
+                      <button className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold shadow-md hover:bg-slate-800 transition-transform hover:scale-[1.02] flex items-center justify-center gap-2">
+                          Send Campaign <Send size={16} />
                       </button>
                   </div>
               </div>

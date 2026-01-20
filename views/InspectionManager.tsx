@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
-import { ClipboardCheck, Search, Plus, Camera, CheckCircle2, AlertTriangle, XCircle, FileText, BadgeCheck, ShieldCheck, Printer, Share2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ClipboardCheck, Search, Plus, Camera, CheckCircle2, AlertTriangle, XCircle, FileText, BadgeCheck, ShieldCheck, Printer, Share2, Wrench } from 'lucide-react';
 import { Inspection, InspectionItem } from '../types';
 
 interface InspectionManagerProps {
     inspections: Inspection[];
     setInspections: (inspections: Inspection[]) => void;
+    activeInspectionId?: string | null;
 }
 
-const InspectionManager: React.FC<InspectionManagerProps> = ({ inspections, setInspections }) => {
+const InspectionManager: React.FC<InspectionManagerProps> = ({ inspections, setInspections, activeInspectionId }) => {
   // Local state only for the active working session
   const [activeInspection, setActiveInspection] = useState<Inspection | null>(null);
   const [checklist, setChecklist] = useState<InspectionItem[]>([
@@ -18,6 +19,16 @@ const InspectionManager: React.FC<InspectionManagerProps> = ({ inspections, setI
     { id: '5', category: 'Body', label: 'Paint Consistency', status: 'PENDING' },
     { id: '6', category: 'Interior', label: 'Dashboard Warnings', status: 'PENDING' },
   ]);
+
+  // Load inspection from prop ID if provided (Deep linking)
+  useEffect(() => {
+      if (activeInspectionId) {
+          const ins = inspections.find(i => i.id === activeInspectionId);
+          if (ins) {
+              openInspection(ins);
+          }
+      }
+  }, [activeInspectionId, inspections]);
 
   const startNewInspection = () => {
       const newInsp: Inspection = {
@@ -38,13 +49,11 @@ const InspectionManager: React.FC<InspectionManagerProps> = ({ inspections, setI
 
   const openInspection = (ins: Inspection) => {
       setActiveInspection(ins);
-      // If it has saved checklist data, load it (mock logic for now since checklist isn't fully in type yet, assume default or persisted)
-      // For this prototype, we'll just reset if it's a different one, or if persisted data existed we'd load it.
-      // Ideally Inspection type should have `checklist` property. I added it to types.ts.
+      // If it has saved checklist data, load it.
       if (ins.checklist) {
           setChecklist(ins.checklist);
       } else {
-          // Reset default if no saved data
+          // Reset default if no saved data but check current state logic
            setChecklist(checklist.map(i => ({...i, status: 'PENDING'}))); 
       }
   };
@@ -165,9 +174,16 @@ const InspectionManager: React.FC<InspectionManagerProps> = ({ inspections, setI
                                     {activeInspection.type}
                                 </span>
                             </div>
-                            <p className="text-gray-500 text-sm mt-1">
-                                {activeInspection.status === 'COMPLETED' ? `Certified on ${activeInspection.date}` : 'Inspection in progress'}
-                            </p>
+                            <div className="flex items-center gap-4 mt-1">
+                                <p className="text-gray-500 text-sm">
+                                    {activeInspection.status === 'COMPLETED' ? `Certified on ${activeInspection.date}` : 'Inspection in progress'}
+                                </p>
+                                {activeInspection.jobId && (
+                                    <span className="flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
+                                        <Wrench size={12}/> Linked to Job: {activeInspection.jobId}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                         
                         {activeInspection.status === 'IN_PROGRESS' && (

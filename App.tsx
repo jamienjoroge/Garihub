@@ -13,7 +13,7 @@ import HRManager from './views/HRManager';
 import SettingsManager from './views/SettingsManager';
 import ProjectManager from './views/ProjectManager';
 import AssetManager from './views/AssetManager';
-import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment, Employee, TenantSettings, Inspection } from './types';
+import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment, Employee, TenantSettings, Inspection, StockMovement } from './types';
 import { ShieldAlert } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -217,10 +217,12 @@ const App: React.FC = () => {
   // --- NAVIGATION HIGHLIGHT STATE ---
   const [highlightedJobId, setHighlightedJobId] = useState<string | null>(null);
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
+  const [activeInspectionId, setActiveInspectionId] = useState<string | null>(null); // For deep linking to inspections
 
   // --- LIFTED STATE FOR INTEGRATION ---
   
-  // 1. Inventory State
+  // 1. Inventory State & Movements
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [products, setProducts] = useState<Product[]>([
     { id: 'P-001', sku: 'OIL-5W30', name: 'Synthetic Oil 5W30 (4L)', brand: 'TotalEnergies', category: 'SERVICE_PARTS', compatibleBrands: ['ALL'], compatibleModels: [], stockLevel: 15, minStockLevel: 10, buyPrice: 2800, sellPrice: 4500, supplierId: 'SUP-001', location: 'Shelf A1', costingMethod: 'WEIGHTED_AVERAGE', isTaxable: true, branchId: 'BR-HQ' },
     { id: 'P-002', sku: 'BRK-PAD-TOY', name: 'Front Brake Pads (Toyota)', brand: 'Toyota Genuine', category: 'BRAKES', compatibleBrands: ['TOYOTA'], compatibleModels: ['FIELDER', 'AXIO', 'VITZ'], stockLevel: 4, minStockLevel: 5, buyPrice: 1500, sellPrice: 3500, supplierId: 'SUP-001', location: 'Shelf B3', costingMethod: 'STANDARD_COST', isTaxable: true, branchId: 'BR-HQ' },
@@ -481,6 +483,26 @@ const App: React.FC = () => {
       setCurrentView('SALES');
   };
 
+  const handleStartInspection = (job: JobCard) => {
+      const newInspection: Inspection = {
+          id: `INS-${Date.now()}`,
+          jobId: job.id,
+          plateNumber: job.vehicle.plateNumber,
+          model: `${job.vehicle.make} ${job.vehicle.model}`,
+          type: 'SAFETY',
+          status: 'IN_PROGRESS',
+          date: new Date().toISOString().split('T')[0],
+      };
+
+      setInspections([newInspection, ...inspections]);
+      
+      const updatedJob = { ...job, inspectionId: newInspection.id };
+      setJobs(jobs.map(j => j.id === job.id ? updatedJob : j));
+
+      setActiveInspectionId(newInspection.id);
+      setCurrentView('INSPECTIONS');
+  };
+
   const handleCreateJobFromOrder = (order: SalesOrder) => {
     if (order.jobCardId) {
         const existingJob = jobs.find(j => j.id === order.jobCardId);
@@ -691,6 +713,8 @@ const App: React.FC = () => {
         return <VehicleRegistry 
             vehicles={vehicles}
             setVehicles={setVehicles}
+            jobs={jobs}
+            inspections={inspections}
         />;
       case 'JOBS':
         return <JobCardManager 
@@ -709,7 +733,14 @@ const App: React.FC = () => {
             servicePackages={servicePackages}
             onCheckIn={handleCheckIn}
             onBookAppointment={handleBookAppointment}
-            tenantSettings={tenantSettings} // Pass for report generation
+            tenantSettings={tenantSettings}
+            onStartInspection={handleStartInspection}
+            stockMovements={stockMovements}
+            setStockMovements={setStockMovements}
+            chartOfAccounts={chartOfAccounts}
+            setChartOfAccounts={setChartOfAccounts}
+            journalEntries={journalEntries}
+            setJournalEntries={setJournalEntries}
         />;
       case 'PROJECTS':
         return <ProjectManager 
@@ -727,6 +758,7 @@ const App: React.FC = () => {
         return <InspectionManager 
             inspections={inspections} 
             setInspections={setInspections}
+            activeInspectionId={activeInspectionId}
         />;
       case 'CUSTOMERS':
         return <CustomerManager userRole={role} customers={customers} setCustomers={setCustomers} />;
@@ -762,6 +794,8 @@ const App: React.FC = () => {
             currentBranch={currentBranch}
             branches={branches}
             userRole={role}
+            stockMovements={stockMovements}
+            setStockMovements={setStockMovements}
         />;
       case 'ASSETS':
         return <AssetManager 

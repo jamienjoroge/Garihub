@@ -70,7 +70,7 @@ export interface JournalEntry {
 }
 
 // --- ERP CORE: ADVANCED INVENTORY ---
-export type StockMovementType = 'PURCHASE' | 'SALE' | 'ADJUSTMENT_IN' | 'ADJUSTMENT_OUT' | 'TRANSFER_IN' | 'TRANSFER_OUT';
+export type StockMovementType = 'PURCHASE' | 'SALE' | 'ADJUSTMENT_IN' | 'ADJUSTMENT_OUT' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'JOB_USAGE';
 
 export interface StockMovement {
   id: string;
@@ -364,6 +364,7 @@ export interface GoodsReceipt {
   id: string;
   poId: string;
   supplierId: string;
+  dateCreated: string;
   dateReceived: string;
   deliveryNoteNumber: string; // Physical paper ref
   items: { productId: string; quantityReceived: number; unitCost: number }[];
@@ -456,6 +457,7 @@ export interface InspectionItem {
 
 export interface Inspection {
   id: string;
+  jobId?: string; // Link to Job
   plateNumber: string;
   model: string;
   type: 'PRE-PURCHASE' | 'SAFETY' | 'VALUATION';

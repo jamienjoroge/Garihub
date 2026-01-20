@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Filter, Package, ShoppingCart, Truck, AlertTriangle, ArrowDown, ArrowUp, X, LayoutGrid, List, Trash2, Save, BadgeDollarSign, PieChart, ClipboardList, CheckSquare, FileText, Repeat, Warehouse } from 'lucide-react';
+import { Search, Plus, Filter, Package, ShoppingCart, Truck, AlertTriangle, ArrowDown, ArrowUp, X, LayoutGrid, List, Trash2, Save, BadgeDollarSign, PieChart, ClipboardList, CheckSquare, FileText, Repeat, Warehouse, Loader2 } from 'lucide-react';
 import { Product, Supplier, PurchaseOrder, PartCategory, CostingMethod, GoodsReceipt, Branch, StockMovement, UserRole } from '../types';
 
 interface InventoryManagerProps {
@@ -8,11 +8,17 @@ interface InventoryManagerProps {
     currentBranch: Branch;
     branches: Branch[];
     userRole: UserRole;
+    stockMovements: StockMovement[];
+    setStockMovements: (movements: StockMovement[]) => void;
 }
 
-const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProducts, currentBranch, branches, userRole }) => {
+const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProducts, currentBranch, branches, userRole, stockMovements, setStockMovements }) => {
   const [activeTab, setActiveTab] = useState<'STOCK' | 'SUPPLIERS' | 'PO' | 'RECEIPTS' | 'MOVEMENTS'>('STOCK');
   const [supplierViewMode, setSupplierViewMode] = useState<'GRID' | 'LIST'>('GRID');
+
+  // --- Loading & Error States ---
+  const [isBusy, setIsBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Force Technicians to Stock view only if they try to switch
   useEffect(() => {
@@ -37,6 +43,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
         id: 'GRN-501', 
         poId: 'PO-1001', 
         supplierId: 'SUP-001', 
+        dateCreated: '2023-10-22',
         dateReceived: '2023-10-22', 
         deliveryNoteNumber: 'DN-8842', 
         items: [{ productId: 'P-001', quantityReceived: 10, unitCost: 2800 }], 
@@ -44,8 +51,6 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
         status: 'BILLED' 
     }
   ]);
-
-  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
 
   // --- Product Form State ---
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -109,85 +114,97 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
 
   // --- Handlers ---
 
-  const handleStockTransfer = () => {
+  const handleStockTransfer = async () => {
       if(!transferData.toBranchId || !transferData.productId || transferData.quantity <= 0) return;
       if(transferData.toBranchId === currentBranch.id) {
-          alert("Cannot transfer to same branch.");
+          setError("Cannot transfer to same branch.");
           return;
       }
 
-      // 1. Find Source Product
-      const sourceProd = products.find(p => p.id === transferData.productId);
-      if(!sourceProd || sourceProd.stockLevel < transferData.quantity) {
-          alert("Insufficient stock for transfer.");
-          return;
+      setIsBusy(true);
+      setError(null);
+
+      try {
+        // Simulate backend latency
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        // 1. Find Source Product
+        const sourceProd = products.find(p => p.id === transferData.productId);
+        if(!sourceProd || sourceProd.stockLevel < transferData.quantity) {
+            setError("Insufficient stock for transfer.");
+            setIsBusy(false);
+            return;
+        }
+
+        const destBranchName = branches.find(b => b.id === transferData.toBranchId)?.name;
+        const sourceBranchName = currentBranch.name;
+
+        // 2. Identify/Create Dest Product (Based on SKU Match at Dest Branch)
+        const destProd = products.find(p => p.sku === sourceProd.sku && p.branchId === transferData.toBranchId);
+        
+        let updatedProducts = [...products];
+        let newMovements = [...stockMovements];
+
+        // A. Decrement Source
+        updatedProducts = updatedProducts.map(p => 
+            p.id === sourceProd.id ? { ...p, stockLevel: p.stockLevel - transferData.quantity } : p
+        );
+        
+        newMovements.push({
+            id: `MV-OUT-${Date.now()}`,
+            date: new Date().toISOString().split('T')[0],
+            productId: sourceProd.id,
+            branchId: currentBranch.id,
+            type: 'TRANSFER_OUT',
+            quantity: transferData.quantity,
+            reason: `Transfer to ${destBranchName}`,
+        });
+
+        // B. Increment/Create Dest
+        if (destProd) {
+            updatedProducts = updatedProducts.map(p => 
+                p.id === destProd.id ? { ...p, stockLevel: p.stockLevel + transferData.quantity } : p
+            );
+            newMovements.push({
+                id: `MV-IN-${Date.now()}`,
+                date: new Date().toISOString().split('T')[0],
+                productId: destProd.id,
+                branchId: transferData.toBranchId,
+                type: 'TRANSFER_IN',
+                quantity: transferData.quantity,
+                reason: `Transfer from ${sourceBranchName}`,
+            });
+        } else {
+            // Clone Product for Destination
+            const newDestProd: Product = {
+                ...sourceProd,
+                id: `P-${Date.now()}-T${Math.floor(Math.random() * 100)}`,
+                branchId: transferData.toBranchId,
+                stockLevel: transferData.quantity,
+                location: 'Receiving' // Default location for incoming
+            };
+            updatedProducts.push(newDestProd);
+            
+            newMovements.push({
+                id: `MV-IN-${Date.now()}`,
+                date: new Date().toISOString().split('T')[0],
+                productId: newDestProd.id,
+                branchId: transferData.toBranchId,
+                type: 'TRANSFER_IN',
+                quantity: transferData.quantity,
+                reason: `Transfer from ${sourceBranchName} (New Item)`,
+            });
+        }
+
+        setStockMovements(newMovements);
+        setProducts(updatedProducts);
+        setIsTransferModalOpen(false);
+        setTransferData({ toBranchId: '', productId: '', quantity: 0 });
+      } catch (err) {
+        setError("Transfer failed. Please try again.");
+      } finally {
+        setIsBusy(false);
       }
-
-      const destBranchName = branches.find(b => b.id === transferData.toBranchId)?.name;
-      const sourceBranchName = currentBranch.name;
-
-      // 2. Identify/Create Dest Product (Based on SKU Match at Dest Branch)
-      const destProd = products.find(p => p.sku === sourceProd.sku && p.branchId === transferData.toBranchId);
-      
-      let updatedProducts = [...products];
-      let newMovements = [...stockMovements];
-
-      // A. Decrement Source
-      updatedProducts = updatedProducts.map(p => 
-          p.id === sourceProd.id ? { ...p, stockLevel: p.stockLevel - transferData.quantity } : p
-      );
-      
-      newMovements.push({
-          id: `MV-OUT-${Date.now()}`,
-          date: new Date().toISOString().split('T')[0],
-          productId: sourceProd.id,
-          branchId: currentBranch.id,
-          type: 'TRANSFER_OUT',
-          quantity: transferData.quantity,
-          reason: `Transfer to ${destBranchName}`,
-      });
-
-      // B. Increment/Create Dest
-      if (destProd) {
-          updatedProducts = updatedProducts.map(p => 
-              p.id === destProd.id ? { ...p, stockLevel: p.stockLevel + transferData.quantity } : p
-          );
-          newMovements.push({
-              id: `MV-IN-${Date.now()}`,
-              date: new Date().toISOString().split('T')[0],
-              productId: destProd.id,
-              branchId: transferData.toBranchId,
-              type: 'TRANSFER_IN',
-              quantity: transferData.quantity,
-              reason: `Transfer from ${sourceBranchName}`,
-          });
-      } else {
-          // Clone Product for Destination
-          const newDestProd: Product = {
-              ...sourceProd,
-              id: `P-${Date.now()}-T${Math.floor(Math.random() * 100)}`,
-              branchId: transferData.toBranchId,
-              stockLevel: transferData.quantity,
-              location: 'Receiving' // Default location for incoming
-          };
-          updatedProducts.push(newDestProd);
-          
-          newMovements.push({
-              id: `MV-IN-${Date.now()}`,
-              date: new Date().toISOString().split('T')[0],
-              productId: newDestProd.id,
-              branchId: transferData.toBranchId,
-              type: 'TRANSFER_IN',
-              quantity: transferData.quantity,
-              reason: `Transfer from ${sourceBranchName} (New Item)`,
-          });
-      }
-
-      setStockMovements(newMovements);
-      setProducts(updatedProducts);
-      setIsTransferModalOpen(false);
-      setTransferData({ toBranchId: '', productId: '', quantity: 0 });
-      alert(`Transfer successful! Inventory moved to ${destBranchName}.`);
   };
   
   const openReceiveModal = (po: PurchaseOrder) => {
@@ -201,68 +218,80 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
       setIsReceiveModalOpen(true);
   };
 
-  const submitGoodsReceipt = () => {
+  const submitGoodsReceipt = async () => {
     if (!receivingPO || !grnDeliveryNote) return;
 
-    // 1. Create GRN
-    const receivedItems = receivingPO.items.map(item => ({
-        productId: item.productId,
-        quantityReceived: receiveQuantities[item.productId] || 0,
-        unitCost: item.unitCost
-    })).filter(i => i.quantityReceived > 0);
+    setIsBusy(true);
+    setError(null);
 
-    const totalValue = receivedItems.reduce((acc, item) => acc + (item.quantityReceived * item.unitCost), 0);
+    try {
+        await new Promise(resolve => setTimeout(resolve, 800));
 
-    const grn: GoodsReceipt = {
-        id: `GRN-${Date.now().toString().slice(-6)}`,
-        poId: receivingPO.id,
-        supplierId: receivingPO.supplierId,
-        dateReceived: new Date().toISOString().split('T')[0],
-        deliveryNoteNumber: grnDeliveryNote,
-        items: receivedItems,
-        totalValue: totalValue,
-        status: 'PENDING_BILL'
-    };
+        // 1. Create GRN
+        const receivedItems = receivingPO.items.map(item => ({
+            productId: item.productId,
+            quantityReceived: receiveQuantities[item.productId] || 0,
+            unitCost: item.unitCost
+        })).filter(i => i.quantityReceived > 0);
 
-    setGoodsReceipts([grn, ...goodsReceipts]);
+        const totalValue = receivedItems.reduce((acc, item) => acc + (item.quantityReceived * item.unitCost), 0);
 
-    // 2. Update Stock Levels
-    const updatedProducts = [...products];
-    const newMovements: StockMovement[] = [];
+        const grn: GoodsReceipt = {
+            id: `GRN-${Date.now().toString().slice(-6)}`,
+            poId: receivingPO.id,
+            supplierId: receivingPO.supplierId,
+            dateCreated: new Date().toISOString().split('T')[0],
+            dateReceived: new Date().toISOString().split('T')[0],
+            deliveryNoteNumber: grnDeliveryNote,
+            items: receivedItems,
+            totalValue: totalValue,
+            status: 'PENDING_BILL'
+        };
 
-    receivedItems.forEach(item => {
-        const prodIndex = updatedProducts.findIndex(p => p.id === item.productId);
-        if (prodIndex !== -1) {
-            updatedProducts[prodIndex] = {
-                ...updatedProducts[prodIndex],
-                stockLevel: updatedProducts[prodIndex].stockLevel + item.quantityReceived
-            };
-            // Log Movement
-            newMovements.push({
-                id: `MV-${Date.now()}-${item.productId}`,
-                date: new Date().toISOString().split('T')[0],
-                productId: item.productId,
-                branchId: currentBranch.id,
-                type: 'PURCHASE',
-                quantity: item.quantityReceived,
-                referenceId: grn.id
-            });
-        }
-    });
-    setProducts(updatedProducts);
-    setStockMovements([...newMovements, ...stockMovements]);
+        setGoodsReceipts([grn, ...goodsReceipts]);
 
-    // 3. Update PO Status
-    const updatedPOs = purchaseOrders.map(p => {
-        if (p.id === receivingPO.id) {
-            return { ...p, status: 'RECEIVED' as const };
-        }
-        return p;
-    });
-    setPurchaseOrders(updatedPOs);
+        // 2. Update Stock Levels
+        const updatedProducts = [...products];
+        const newMovements: StockMovement[] = [];
 
-    setIsReceiveModalOpen(false);
-    setActiveTab('RECEIPTS');
+        receivedItems.forEach(item => {
+            const prodIndex = updatedProducts.findIndex(p => p.id === item.productId);
+            if (prodIndex !== -1) {
+                updatedProducts[prodIndex] = {
+                    ...updatedProducts[prodIndex],
+                    stockLevel: updatedProducts[prodIndex].stockLevel + item.quantityReceived
+                };
+                // Log Movement
+                newMovements.push({
+                    id: `MV-${Date.now()}-${item.productId}`,
+                    date: new Date().toISOString().split('T')[0],
+                    productId: item.productId,
+                    branchId: currentBranch.id,
+                    type: 'PURCHASE',
+                    quantity: item.quantityReceived,
+                    referenceId: grn.id
+                });
+            }
+        });
+        setProducts(updatedProducts);
+        setStockMovements([...newMovements, ...stockMovements]);
+
+        // 3. Update PO Status
+        const updatedPOs = purchaseOrders.map(p => {
+            if (p.id === receivingPO.id) {
+                return { ...p, status: 'RECEIVED' as const };
+            }
+            return p;
+        });
+        setPurchaseOrders(updatedPOs);
+
+        setIsReceiveModalOpen(false);
+        setActiveTab('RECEIPTS');
+    } catch (err) {
+        setError("Failed to process GRN.");
+    } finally {
+        setIsBusy(false);
+    }
   };
 
   const openAddModal = () => {
@@ -287,51 +316,70 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
     setIsProductModalOpen(true);
   };
 
-  const handleSaveProduct = () => {
+  const handleSaveProduct = async () => {
     if (!productForm.name || !productForm.sku || !productForm.supplierId) return;
 
-    const productData: Product = {
-        id: editingProductId || `P-${Date.now()}`,
-        name: productForm.name,
-        sku: productForm.sku.toUpperCase(),
-        brand: productForm.brand || 'Generic',
-        category: productForm.category as PartCategory,
-        compatibleBrands: productForm.brandInput ? productForm.brandInput.split(',').map(s => s.trim().toUpperCase()) : ['ALL'],
-        compatibleModels: productForm.modelInput ? productForm.modelInput.split(',').map(s => s.trim()) : [],
-        stockLevel: Number(productForm.stockLevel),
-        minStockLevel: productForm.minStockLevel,
-        buyPrice: Number(productForm.buyPrice),
-        sellPrice: Number(productForm.sellPrice),
-        supplierId: productForm.supplierId,
-        location: productForm.location || 'Unassigned',
-        costingMethod: productForm.costingMethod as CostingMethod,
-        isTaxable: productForm.isTaxable,
-        branchId: currentBranch.id // Enforce current branch
-    };
+    setIsBusy(true);
+    setError(null);
 
-    if (editingProductId) {
-        setProducts(products.map(p => p.id === editingProductId ? productData : p));
-    } else {
-        setProducts([...products, productData]);
+    try {
+        await new Promise(resolve => setTimeout(resolve, 600));
+
+        const productData: Product = {
+            id: editingProductId || `P-${Date.now()}`,
+            name: productForm.name,
+            sku: productForm.sku.toUpperCase(),
+            brand: productForm.brand || 'Generic',
+            category: productForm.category as PartCategory,
+            compatibleBrands: productForm.brandInput ? productForm.brandInput.split(',').map(s => s.trim().toUpperCase()) : ['ALL'],
+            compatibleModels: productForm.modelInput ? productForm.modelInput.split(',').map(s => s.trim()) : [],
+            stockLevel: Number(productForm.stockLevel),
+            minStockLevel: productForm.minStockLevel,
+            buyPrice: Number(productForm.buyPrice),
+            sellPrice: Number(productForm.sellPrice),
+            supplierId: productForm.supplierId,
+            location: productForm.location || 'Unassigned',
+            costingMethod: productForm.costingMethod as CostingMethod,
+            isTaxable: productForm.isTaxable,
+            branchId: currentBranch.id // Enforce current branch
+        };
+
+        if (editingProductId) {
+            setProducts(products.map(p => p.id === editingProductId ? productData : p));
+        } else {
+            setProducts([...products, productData]);
+        }
+
+        setIsProductModalOpen(false);
+    } catch (err) {
+        setError("Failed to save product.");
+    } finally {
+        setIsBusy(false);
     }
-
-    setIsProductModalOpen(false);
   };
 
-  const handleCreatePO = () => {
+  const handleCreatePO = async () => {
     if (!newPO.supplierId || newPO.items.length === 0) return;
-    const totalCost = newPO.items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
-    const po: PurchaseOrder = {
-        id: `PO-${Date.now().toString().slice(-6)}`,
-        supplierId: newPO.supplierId,
-        dateCreated: new Date().toISOString().split('T')[0],
-        status: 'ORDERED', 
-        totalCost: totalCost,
-        items: newPO.items
-    };
-    setPurchaseOrders([po, ...purchaseOrders]);
-    setIsCreatePOModalOpen(false);
-    setNewPO({ supplierId: '', items: [] });
+    
+    setIsBusy(true);
+    try {
+        await new Promise(resolve => setTimeout(resolve, 600));
+        
+        const totalCost = newPO.items.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0);
+        const po: PurchaseOrder = {
+            id: `PO-${Date.now().toString().slice(-6)}`,
+            supplierId: newPO.supplierId,
+            dateCreated: new Date().toISOString().split('T')[0],
+            status: 'ORDERED', 
+            totalCost: totalCost,
+            items: newPO.items
+        };
+        setPurchaseOrders([po, ...purchaseOrders]);
+        setIsCreatePOModalOpen(false);
+        setNewPO({ supplierId: '', items: [] });
+    } finally {
+        setIsBusy(false);
+    }
   };
 
   // PO Item Handlers
@@ -373,6 +421,15 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
             ))}
         </div>
       </header>
+
+      {/* Global Error Banner */}
+      {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-700 animate-in fade-in">
+              <AlertTriangle size={20} className="shrink-0"/>
+              <p className="text-sm font-medium">{error}</p>
+              <button onClick={() => setError(null)} className="ml-auto p-1 hover:bg-red-100 rounded"><X size={16}/></button>
+          </div>
+      )}
 
       {/* --- STOCK LIST VIEW --- */}
       {activeTab === 'STOCK' && (
@@ -538,9 +595,10 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
               <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
                   <div className="p-6 border-b border-gray-100 flex justify-between items-center">
                       <h3 className="font-bold text-xl text-gray-800">Transfer Stock</h3>
-                      <button onClick={() => setIsTransferModalOpen(false)}><X size={24} className="text-gray-400"/></button>
+                      <button onClick={() => setIsTransferModalOpen(false)} disabled={isBusy}><X size={24} className="text-gray-400"/></button>
                   </div>
                   <div className="p-6 space-y-4">
+                      {error && <div className="text-red-600 bg-red-50 p-3 rounded text-sm">{error}</div>}
                       <div className="bg-orange-50 border border-orange-100 p-3 rounded-lg flex items-center gap-2 text-sm text-orange-800">
                           <Warehouse size={16} />
                           From: <strong>{currentBranch.name}</strong>
@@ -551,6 +609,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
                               className="w-full border rounded-lg p-2.5"
                               value={transferData.toBranchId}
                               onChange={(e) => setTransferData({...transferData, toBranchId: e.target.value})}
+                              disabled={isBusy}
                           >
                               <option value="">Select Branch</option>
                               {branches.filter(b => b.id !== currentBranch.id).map(b => (
@@ -564,6 +623,7 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
                               className="w-full border rounded-lg p-2.5"
                               value={transferData.productId}
                               onChange={(e) => setTransferData({...transferData, productId: e.target.value})}
+                              disabled={isBusy}
                           >
                               <option value="">Select Product</option>
                               {branchProducts.map(p => (
@@ -578,12 +638,20 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
                               className="w-full border rounded-lg p-2.5"
                               value={transferData.quantity}
                               onChange={(e) => setTransferData({...transferData, quantity: parseInt(e.target.value)})}
+                              disabled={isBusy}
                           />
                       </div>
                   </div>
                   <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
-                      <button onClick={() => setIsTransferModalOpen(false)} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600">Cancel</button>
-                      <button onClick={handleStockTransfer} className="px-4 py-2 rounded-lg bg-orange-600 text-white font-medium hover:bg-orange-700">Confirm Transfer</button>
+                      <button onClick={() => setIsTransferModalOpen(false)} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600" disabled={isBusy}>Cancel</button>
+                      <button 
+                        onClick={handleStockTransfer} 
+                        className="px-4 py-2 rounded-lg bg-orange-600 text-white font-medium hover:bg-orange-700 flex items-center gap-2"
+                        disabled={isBusy}
+                      >
+                          {isBusy ? <Loader2 size={16} className="animate-spin" /> : null}
+                          {isBusy ? 'Processing...' : 'Confirm Transfer'}
+                      </button>
                   </div>
               </div>
           </div>
@@ -595,16 +663,17 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
               <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                  <h3 className="font-bold text-xl text-gray-800">Add Inventory to {currentBranch.name}</h3>
-                 <button onClick={() => setIsProductModalOpen(false)}><X size={24} className="text-gray-400" /></button>
+                 <button onClick={() => setIsProductModalOpen(false)} disabled={isBusy}><X size={24} className="text-gray-400" /></button>
               </div>
               <div className="p-6 space-y-4">
+                  {error && <div className="text-red-600 bg-red-50 p-3 rounded text-sm">{error}</div>}
                   <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
-                      <input type="text" className="w-full border rounded-lg p-2.5" value={productForm.name} onChange={e => setProductForm({...productForm, name: e.target.value})} />
+                      <input type="text" className="w-full border rounded-lg p-2.5" value={productForm.name} onChange={e => setProductForm({...productForm, name: e.target.value})} disabled={isBusy}/>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                      <input type="text" className="border rounded-lg p-2.5" placeholder="SKU" value={productForm.sku} onChange={e => setProductForm({...productForm, sku: e.target.value})} />
-                      <select className="border rounded-lg p-2.5" value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value as any})}>
+                      <input type="text" className="border rounded-lg p-2.5" placeholder="SKU" value={productForm.sku} onChange={e => setProductForm({...productForm, sku: e.target.value})} disabled={isBusy}/>
+                      <select className="border rounded-lg p-2.5" value={productForm.category} onChange={e => setProductForm({...productForm, category: e.target.value as any})} disabled={isBusy}>
                           <option value="SERVICE_PARTS">Service Parts</option>
                           <option value="ENGINE">Engine</option>
                           {/* ... other options */}
@@ -614,24 +683,31 @@ const InventoryManager: React.FC<InventoryManagerProps> = ({ products, setProduc
                   <div className="grid grid-cols-2 gap-4">
                       <div>
                           <label className="block text-sm font-medium text-gray-700">Initial Stock</label>
-                          <input type="number" className="w-full border rounded-lg p-2.5" value={productForm.stockLevel} onChange={e => setProductForm({...productForm, stockLevel: parseInt(e.target.value)})} />
+                          <input type="number" className="w-full border rounded-lg p-2.5" value={productForm.stockLevel} onChange={e => setProductForm({...productForm, stockLevel: parseInt(e.target.value)})} disabled={isBusy}/>
                       </div>
                       <div>
                           <label className="block text-sm font-medium text-gray-700">Unit Cost</label>
-                          <input type="number" className="w-full border rounded-lg p-2.5" value={productForm.buyPrice} onChange={e => setProductForm({...productForm, buyPrice: parseInt(e.target.value)})} />
+                          <input type="number" className="w-full border rounded-lg p-2.5" value={productForm.buyPrice} onChange={e => setProductForm({...productForm, buyPrice: parseInt(e.target.value)})} disabled={isBusy}/>
                       </div>
                   </div>
                   <div>
                       <label className="block text-sm font-medium text-gray-700">Supplier</label>
-                      <select className="w-full border rounded-lg p-2.5" value={productForm.supplierId} onChange={e => setProductForm({...productForm, supplierId: e.target.value})}>
+                      <select className="w-full border rounded-lg p-2.5" value={productForm.supplierId} onChange={e => setProductForm({...productForm, supplierId: e.target.value})} disabled={isBusy}>
                           <option value="">Select Supplier</option>
                           {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
                   </div>
               </div>
               <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
-                 <button onClick={() => setIsProductModalOpen(false)} className="px-4 py-2 border rounded-lg text-gray-600">Cancel</button>
-                 <button onClick={handleSaveProduct} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Save Item</button>
+                 <button onClick={() => setIsProductModalOpen(false)} className="px-4 py-2 border rounded-lg text-gray-600" disabled={isBusy}>Cancel</button>
+                 <button 
+                    onClick={handleSaveProduct} 
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2"
+                    disabled={isBusy}
+                 >
+                    {isBusy ? <Loader2 size={16} className="animate-spin" /> : null}
+                    Save Item
+                 </button>
               </div>
            </div>
         </div>

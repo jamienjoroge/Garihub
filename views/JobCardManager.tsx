@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, BrainCircuit, CheckCircle2, Clock, Wrench, ChevronRight, FileText, Calendar as CalendarIcon, User, ArrowRight, LayoutGrid, X, Package, ShoppingCart, Timer, Pause, Play, StopCircle, BadgeCheck, AlertTriangle, ClipboardList, Filter, Lock, MoreHorizontal, Stethoscope, Bell, MessageSquare, ListChecks, CalendarDays, Phone, Car, Printer } from 'lucide-react';
-import { JobCard, JobStatus, Appointment, ServiceBay, Product, LaborLog, Branch, UserRole, DiagnosisItem, ServicePackage, TenantSettings } from '../types';
+import { Plus, Search, BrainCircuit, CheckCircle2, Clock, Wrench, ChevronRight, FileText, Calendar as CalendarIcon, User, ArrowRight, LayoutGrid, X, Package, ShoppingCart, Timer, Pause, Play, StopCircle, BadgeCheck, AlertTriangle, ClipboardList, Filter, Lock, MoreHorizontal, Stethoscope, Bell, MessageSquare, ListChecks, CalendarDays, Phone, Car, Printer, ClipboardCheck, Loader2 } from 'lucide-react';
+import { JobCard, JobStatus, Appointment, ServiceBay, Product, LaborLog, Branch, UserRole, DiagnosisItem, ServicePackage, TenantSettings, StockMovement, Account, JournalEntry } from '../types';
 import { diagnoseIssue, estimateRepairCost } from '../services/geminiService';
 
 interface JobCardManagerProps {
@@ -20,34 +20,43 @@ interface JobCardManagerProps {
     onCheckIn?: (job: JobCard, mode: 'SERVICE' | 'DIAGNOSIS', servicePackageId?: string, diagnosisFee?: number) => void;
     onBookAppointment?: (appointment: Appointment, vehicleDetails?: { make: string, model: string }) => void;
     tenantSettings?: TenantSettings;
+    onStartInspection?: (job: JobCard) => void;
+    stockMovements?: StockMovement[];
+    setStockMovements?: (movements: StockMovement[]) => void;
+    chartOfAccounts?: Account[];
+    setChartOfAccounts?: (accounts: Account[]) => void;
+    journalEntries?: JournalEntry[];
+    setJournalEntries?: (entries: JournalEntry[]) => void;
 }
 
-const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCreateJob, inventory, setInventory, onViewOrder, highlightedJobId, serviceBays, setServiceBays, currentBranch, userRole, onGenerateQuote, servicePackages = [], onCheckIn, onBookAppointment, tenantSettings }) => {
+const JobCardManager: React.FC<JobCardManagerProps> = ({ 
+    jobs, onUpdateJob, onCreateJob, inventory, setInventory, onViewOrder, highlightedJobId, 
+    serviceBays, setServiceBays, currentBranch, userRole, onGenerateQuote, servicePackages = [], 
+    onCheckIn, onBookAppointment, tenantSettings, onStartInspection,
+    stockMovements, setStockMovements, chartOfAccounts, setChartOfAccounts, journalEntries, setJournalEntries
+}) => {
   const [activeTab, setActiveTab] = useState<'JOBS' | 'APPOINTMENTS' | 'BAYS' | 'SCHEDULE'>('JOBS');
 
-  // --- Filter States ---
   const [filterQuery, setFilterQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<JobStatus | 'ALL'>('ALL');
   const [filterTechnician, setFilterTechnician] = useState<string>('ALL');
 
-  // --- Job Workflow States ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [workflowJob, setWorkflowJob] = useState<JobCard | null>(null); 
   const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
   const [workflowTab, setWorkflowTab] = useState<'OVERVIEW' | 'DIAGNOSIS' | 'PARTS' | 'LABOR'>('OVERVIEW');
   const [showReport, setShowReport] = useState(false);
 
-  // --- Async & Error States ---
+  // Async States
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false); // General save/loading state
 
-  // --- Check-In Modal States ---
   const [checkInMode, setCheckInMode] = useState<'SERVICE' | 'DIAGNOSIS'>('SERVICE');
   const [selectedPackageId, setSelectedPackageId] = useState('');
   const [diagnosisPaid, setDiagnosisPaid] = useState(false);
   const [diagnosisFee, setDiagnosisFee] = useState(1500);
 
-  // Auto-open modal if highlightedJobId matches a job
   useEffect(() => {
       if (highlightedJobId) {
           const job = jobs.find(j => j.id === highlightedJobId);
@@ -60,7 +69,6 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
       }
   }, [highlightedJobId, jobs]);
 
-  // ... (Keep existing Appointments, Form States, Actions, Diagnoses logic same as before) ...
   const [appointments, setAppointments] = useState<Appointment[]>([
       { id: 'APT-001', customerName: 'Alice W.', vehiclePlate: 'KBA 111A', date: '2023-11-02', time: '09:00', serviceType: 'Full Service', status: 'CONFIRMED', phone: '0712345678' },
       { id: 'APT-002', customerName: 'Bob M.', vehiclePlate: 'KCC 222B', date: '2023-11-02', time: '11:00', serviceType: 'Brake Check', status: 'PENDING', phone: '0722334455' }
@@ -150,8 +158,7 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
 
   const handleAddDiagnosisItem = () => { if(newDiagnosis.description && workflowJob) { const item: DiagnosisItem = { id: `DX-${Date.now()}`, description: newDiagnosis.description!, severity: newDiagnosis.severity as any, proposedFix: newDiagnosis.proposedFix, estimatedLaborCost: Number(newDiagnosis.estimatedLaborCost)||0, estimatedPartCost: Number(newDiagnosis.estimatedPartCost)||0 }; const updatedJob = { ...workflowJob, diagnosis: [...(workflowJob.diagnosis || []), item] }; setWorkflowJob(updatedJob); onUpdateJob(updatedJob); setNewDiagnosis({ description: '', severity: 'MEDIUM', proposedFix: '', estimatedLaborCost: 0, estimatedPartCost: 0 }); } };
   
-  // --- INVENTORY LINKAGE HANDLER ---
-  const handleAddPartToJob = () => {
+  const handleAddPartToJob = async () => {
       if (!workflowJob || !selectedPartId) return;
       
       const partIndex = inventory.findIndex(p => p.id === selectedPartId);
@@ -162,46 +169,85 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
       
       const part = inventory[partIndex];
       
-      // 1. Validate Stock
       if (part.stockLevel < addQuantity) {
           alert(`Insufficient stock! Only ${part.stockLevel} units of ${part.name} available.`);
           return;
       }
 
-      // 2. Update Inventory (Decrement)
-      const updatedInventory = [...inventory];
-      updatedInventory[partIndex] = {
-          ...part,
-          stockLevel: part.stockLevel - addQuantity
-      };
-      setInventory(updatedInventory);
+      setIsSaving(true);
+      
+      try {
+        await new Promise(resolve => setTimeout(resolve, 600)); // Simulate
 
-      // 3. Update Job (Add to partsUsed)
-      const newPartItem = { 
-          productId: part.id, 
-          name: part.name, 
-          quantity: addQuantity, 
-          cost: part.buyPrice, 
-          sellPrice: part.sellPrice 
-      };
-      
-      const updatedJob = { 
-          ...workflowJob, 
-          partsUsed: [...(workflowJob.partsUsed || []), newPartItem] 
-      };
-      
-      setWorkflowJob(updatedJob);
-      onUpdateJob(updatedJob);
-      
-      // Reset Selection
-      setSelectedPartId('');
-      setAddQuantity(1);
-      setPartSearch('');
+        const updatedInventory = [...inventory];
+        updatedInventory[partIndex] = {
+            ...part,
+            stockLevel: part.stockLevel - addQuantity
+        };
+        setInventory(updatedInventory);
+
+        if (setStockMovements && stockMovements) {
+            const movement: StockMovement = {
+                id: `MV-JOB-${Date.now()}`,
+                date: new Date().toISOString().split('T')[0],
+                productId: part.id,
+                branchId: currentBranch.id,
+                type: 'JOB_USAGE',
+                quantity: addQuantity,
+                reason: `Used on Job ${workflowJob.id} (${workflowJob.vehicle.plateNumber})`
+            };
+            setStockMovements([movement, ...stockMovements]);
+        }
+
+        if (setJournalEntries && journalEntries && chartOfAccounts && setChartOfAccounts) {
+            const costAmount = part.buyPrice * addQuantity;
+            const je: JournalEntry = {
+                id: `JE-COGS-${Date.now()}`,
+                date: new Date().toISOString().split('T')[0],
+                description: `COGS: ${addQuantity}x ${part.name} for Job ${workflowJob.id}`,
+                branchId: currentBranch.id,
+                reference: workflowJob.id,
+                lines: [
+                    { accountId: '5000', debit: costAmount, credit: 0 }, 
+                    { accountId: '1500', debit: 0, credit: costAmount }
+                ]
+            };
+            setJournalEntries([je, ...journalEntries]);
+
+            const updatedAccounts = chartOfAccounts.map(acc => {
+                if (acc.id === '5000') return { ...acc, balance: acc.balance + costAmount }; 
+                if (acc.id === '1500') return { ...acc, balance: acc.balance - costAmount }; 
+                return acc;
+            });
+            setChartOfAccounts(updatedAccounts);
+        }
+
+        const newPartItem = { 
+            productId: part.id, 
+            name: part.name, 
+            quantity: addQuantity, 
+            cost: part.buyPrice, 
+            sellPrice: part.sellPrice 
+        };
+        
+        const updatedJob = { 
+            ...workflowJob, 
+            partsUsed: [...(workflowJob.partsUsed || []), newPartItem] 
+        };
+        
+        setWorkflowJob(updatedJob);
+        onUpdateJob(updatedJob);
+        
+        setSelectedPartId('');
+        setAddQuantity(1);
+        setPartSearch('');
+      } finally {
+        setIsSaving(false);
+      }
   };
 
   const handleCreateAppointment = () => { setIsAptModalOpen(false); }; // Mock
   
-  // --- AI HANDLER WITH ERROR HANDLING ---
   const handleAiDiagnose = async () => {
       if(!workflowJob) return;
       setIsAiLoading(true);
@@ -248,22 +294,17 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
         </div>
       </header>
 
-      {/* ... (Keep existing BAYS, SCHEDULE, APPOINTMENTS views) ... */}
       {activeTab === 'BAYS' && <div className="p-4 bg-white rounded-xl text-center text-gray-400">Bay Management View</div>}
       {activeTab === 'SCHEDULE' && <div className="p-4 bg-white rounded-xl text-center text-gray-400">Schedule View</div>}
       {activeTab === 'APPOINTMENTS' && <div className="p-4 bg-white rounded-xl text-center text-gray-400">Appointments View</div>}
 
-      {/* --- JOBS WORKFLOW VIEW --- */}
       {activeTab === 'JOBS' && (
       <div className="flex flex-col h-full">
-        {/* Filters & Actions */}
         <div className="flex flex-wrap gap-4 mb-6 items-center">
-            {/* ... Search & Filters ... */}
             <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                 <input type="text" placeholder="Search..." className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200" value={filterQuery} onChange={(e) => setFilterQuery(e.target.value)} />
             </div>
-            {/* ... */}
             {userRole !== 'TECHNICIAN' && (
                 <button onClick={() => setIsModalOpen(true)} className="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm">
                 <Plus size={20} /> New Check-in
@@ -271,10 +312,8 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
             )}
         </div>
 
-        {/* Jobs List */}
         <div className="flex-1 overflow-x-auto">
             <div className="flex gap-6 min-w-max pb-4">
-                {/* Simplified grouping for brevity in this snippet */}
                 {['DIAGNOSING', 'WAITING_APPROVAL', 'READY', 'IN_PROGRESS', 'COMPLETED'].map(status => {
                     const jobsInStatus = filteredJobs.filter(j => j.status === status || (status === 'DIAGNOSING' && j.status === JobStatus.ESTIMATING) || (status === 'COMPLETED' && j.status === JobStatus.INVOICED));
                     if (jobsInStatus.length === 0) return null;
@@ -300,14 +339,11 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
       </div>
       )}
 
-      {/* ... (Keep existing Book Appointment & Check-in Modals) ... */}
       {isModalOpen && <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"><div className="bg-white p-6 rounded-xl w-96"><h3 className="font-bold mb-4">Check In</h3><button onClick={handleCreateJob} className="bg-blue-600 text-white px-4 py-2 rounded">Create</button><button onClick={() => setIsModalOpen(false)} className="ml-2 text-gray-500">Cancel</button></div></div>}
 
-      {/* Workflow Action Modal */}
       {isWorkflowModalOpen && workflowJob && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto flex flex-col">
-                  {/* Header */}
                   <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50 sticky top-0 z-10">
                       <div>
                           <h3 className="font-bold text-xl text-gray-800">
@@ -321,320 +357,180 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({ jobs, onUpdateJob, onCr
                                   <Printer size={20}/>
                               </button>
                           )}
-                          <button onClick={() => setIsWorkflowModalOpen(false)}><X size={24} className="text-gray-400" /></button>
+                          <button onClick={() => setIsWorkflowModalOpen(false)} className="p-2 text-gray-500 hover:bg-white rounded-lg border border-transparent hover:border-gray-200">
+                              <X size={20}/>
+                          </button>
                       </div>
                   </div>
 
-                  {showReport ? (
-                      /* --- CUSTOM REPORT VIEW --- */
-                      <div className="p-8 bg-white flex-1 overflow-y-auto">
-                          <div className="border border-gray-200 p-8 rounded-none shadow-none print:border-none">
-                              {/* Report Header */}
-                              <div className="flex justify-between border-b-2 border-gray-800 pb-6 mb-6">
-                                  <div>
-                                      <h1 className="text-2xl font-bold uppercase tracking-wide text-gray-900">{tenantSettings?.name || 'Garage Name'}</h1>
-                                      <p className="text-sm text-gray-500 mt-1">{tenantSettings?.address}</p>
-                                      <p className="text-sm text-gray-500">{tenantSettings?.email} | {tenantSettings?.phone}</p>
-                                  </div>
-                                  <div className="text-right">
-                                      <h2 className="text-xl font-bold text-gray-400 uppercase">Job Card</h2>
-                                      <p className="font-mono text-lg font-bold text-gray-900 mt-1">#{workflowJob.id}</p>
-                                      <p className="text-sm text-gray-500">{new Date(workflowJob.entryDate).toLocaleDateString()}</p>
-                                  </div>
+                  <div className="flex border-b border-gray-100 px-6">
+                      <button 
+                        onClick={() => setWorkflowTab('OVERVIEW')} 
+                        className={`px-4 py-3 text-sm font-medium border-b-2 ${workflowTab === 'OVERVIEW' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
+                      >
+                        Overview
+                      </button>
+                      <button 
+                        onClick={() => setWorkflowTab('DIAGNOSIS')} 
+                        className={`px-4 py-3 text-sm font-medium border-b-2 ${workflowTab === 'DIAGNOSIS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
+                      >
+                        Diagnosis
+                      </button>
+                      <button 
+                        onClick={() => setWorkflowTab('PARTS')} 
+                        className={`px-4 py-3 text-sm font-medium border-b-2 ${workflowTab === 'PARTS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
+                      >
+                        Parts
+                      </button>
+                      <button 
+                        onClick={() => setWorkflowTab('LABOR')} 
+                        className={`px-4 py-3 text-sm font-medium border-b-2 ${workflowTab === 'LABOR' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}
+                      >
+                        Labor
+                      </button>
+                  </div>
+
+                  <div className="p-6 overflow-y-auto flex-1">
+                      {workflowTab === 'OVERVIEW' && (
+                          <div className="space-y-4">
+                              <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                  <h4 className="font-bold text-gray-700 mb-2">Job Status: {workflowJob.status.replace('_', ' ')}</h4>
+                                  <p className="text-sm text-gray-600">Current Assigned Tech: {workflowJob.technicianName || 'Unassigned'}</p>
+                              </div>
+                              
+                              {/* Link to Inspection */}
+                              <div className="bg-white border border-blue-100 p-4 rounded-xl shadow-sm">
+                                  <h4 className="font-bold text-gray-800 text-sm mb-2 flex items-center gap-2"><ClipboardCheck size={16} className="text-blue-600"/> Vehicle Inspection</h4>
+                                  {workflowJob.inspectionId ? (
+                                      <div className="flex items-center justify-between">
+                                          <p className="text-sm text-gray-600">Inspection linked: <span className="font-mono">{workflowJob.inspectionId}</span></p>
+                                          <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Active</span>
+                                      </div>
+                                  ) : (
+                                      <div className="flex justify-between items-center">
+                                          <p className="text-sm text-gray-500">No inspection report started for this job.</p>
+                                          {onStartInspection && (
+                                              <button 
+                                                  onClick={() => {
+                                                      onStartInspection(workflowJob);
+                                                      setIsWorkflowModalOpen(false);
+                                                  }}
+                                                  className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700"
+                                              >
+                                                  Launch Inspection
+                                              </button>
+                                          )}
+                                      </div>
+                                  )}
                               </div>
 
-                              {/* Customer & Vehicle */}
-                              <div className="grid grid-cols-2 gap-8 mb-8">
-                                  <div>
-                                      <h3 className="text-xs font-bold text-gray-400 uppercase mb-1">Customer</h3>
-                                      <p className="font-bold text-gray-800">{workflowJob.vehicle.ownerName}</p>
+                              <div className="flex gap-4">
+                                  <div className="flex-1">
+                                      <label className="text-xs font-bold text-gray-500 block mb-1">Status</label>
+                                      <div className="font-bold text-gray-900">{workflowJob.status}</div>
                                   </div>
-                                  <div>
-                                      <h3 className="text-xs font-bold text-gray-400 uppercase mb-1">Vehicle</h3>
-                                      <p className="font-bold text-gray-800">{workflowJob.vehicle.year} {workflowJob.vehicle.make} {workflowJob.vehicle.model}</p>
-                                      <p className="text-sm text-gray-600">Plate: {workflowJob.vehicle.plateNumber}</p>
-                                      <p className="text-sm text-gray-600">VIN: {workflowJob.vehicle.vin}</p>
+                                  <div className="flex-1">
+                                      <label className="text-xs font-bold text-gray-500 block mb-1">Technician</label>
+                                      <div className="font-bold text-gray-900">{workflowJob.technicianName || 'Unassigned'}</div>
                                   </div>
                               </div>
-
-                              {/* Issue Description */}
-                              <div className="mb-8">
-                                  <h3 className="text-xs font-bold text-gray-400 uppercase mb-2">Reported Issue / Request</h3>
-                                  <div className="bg-gray-50 p-3 rounded text-sm text-gray-800">
-                                      {workflowJob.issueDescription}
+                              
+                              <button onClick={handleUpdateStatus} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700">
+                                  Update Status
+                              </button>
+                              
+                              {userRole !== 'TECHNICIAN' && workflowJob.status === 'WAITING_APPROVAL' && (
+                                <button onClick={handleGenerateQuoteAction} className="w-full mt-2 bg-purple-600 text-white py-2 rounded-lg font-bold hover:bg-purple-700">
+                                    Generate Quote
+                                </button>
+                              )}
+                          </div>
+                      )}
+                      
+                      {workflowTab === 'DIAGNOSIS' && (
+                          <div className="space-y-4">
+                              {workflowJob.diagnosis?.map(d => (
+                                  <div key={d.id} className="p-3 bg-gray-50 rounded border border-gray-100">
+                                      <div className="flex justify-between">
+                                          <span className="font-bold text-sm">{d.description}</span>
+                                          <span className={`text-xs px-2 py-0.5 rounded font-bold ${d.severity === 'CRITICAL' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{d.severity}</span>
+                                      </div>
+                                      <div className="text-xs text-gray-500 mt-1">Est. Labor: {d.estimatedLaborCost} | Est. Parts: {d.estimatedPartCost}</div>
                                   </div>
+                              ))}
+                              
+                              <div className="border-t pt-4">
+                                  <textarea 
+                                      className="w-full border rounded p-2 text-sm" 
+                                      placeholder="New Diagnosis..."
+                                      value={newDiagnosis.description}
+                                      onChange={e => setNewDiagnosis({...newDiagnosis, description: e.target.value})}
+                                  />
+                                  <button onClick={handleAddDiagnosisItem} className="mt-2 text-sm bg-gray-200 px-3 py-1 rounded">Add Diagnosis</button>
+                                  <button onClick={handleAiDiagnose} disabled={isAiLoading} className="mt-2 ml-2 text-sm bg-purple-100 text-purple-700 px-3 py-1 rounded flex items-center gap-1 inline-flex disabled:opacity-50">
+                                      {isAiLoading ? <Loader2 size={14} className="animate-spin"/> : <BrainCircuit size={14} />} {isAiLoading ? 'Thinking...' : 'AI Assist'}
+                                  </button>
                               </div>
-
-                              {/* Diagnosis */}
-                              {workflowJob.diagnosis && workflowJob.diagnosis.length > 0 && (
-                                  <div className="mb-8">
-                                      <h3 className="text-xs font-bold text-gray-400 uppercase mb-2">Technical Diagnosis</h3>
-                                      <table className="w-full text-sm border-collapse">
-                                          <thead>
-                                              <tr className="border-b border-gray-300">
-                                                  <th className="text-left py-2">Observation</th>
-                                                  <th className="text-left py-2">Severity</th>
-                                                  <th className="text-left py-2">Proposed Fix</th>
-                                              </tr>
-                                          </thead>
-                                          <tbody>
-                                              {workflowJob.diagnosis.map((d, i) => (
-                                                  <tr key={i} className="border-b border-gray-100">
-                                                      <td className="py-2">{d.description}</td>
-                                                      <td className="py-2"><span className="text-xs font-bold bg-gray-100 px-2 py-0.5 rounded">{d.severity}</span></td>
-                                                      <td className="py-2">{d.proposedFix}</td>
-                                                  </tr>
-                                              ))}
-                                          </tbody>
-                                      </table>
+                              {aiSuggestion && (
+                                  <div className="bg-purple-50 p-3 rounded border border-purple-100 text-sm text-purple-800">
+                                      <strong>AI Suggestion:</strong> {aiSuggestion}
                                   </div>
                               )}
-
-                              {/* Parts & Labor Summary */}
-                              <div className="flex justify-between gap-8 mb-8">
-                                  <div className="flex-1">
-                                      <h3 className="text-xs font-bold text-gray-400 uppercase mb-2">Parts Used</h3>
-                                      {workflowJob.partsUsed && workflowJob.partsUsed.length > 0 ? (
-                                          <ul className="text-sm space-y-1">
-                                              {workflowJob.partsUsed.map((p, i) => (
-                                                  <li key={i} className="flex justify-between">
-                                                      <span>{p.quantity}x {p.name}</span>
-                                                  </li>
-                                              ))}
-                                          </ul>
-                                      ) : <p className="text-sm text-gray-400 italic">None</p>}
-                                  </div>
-                                  <div className="flex-1">
-                                      <h3 className="text-xs font-bold text-gray-400 uppercase mb-2">Labor</h3>
-                                      {workflowJob.laborLogs && workflowJob.laborLogs.length > 0 ? (
-                                          <ul className="text-sm space-y-1">
-                                              {workflowJob.laborLogs.map((l, i) => (
-                                                  <li key={i} className="flex justify-between">
-                                                      <span>{l.technicianName} ({l.durationMinutes || 0}m)</span>
-                                                  </li>
-                                              ))}
-                                          </ul>
-                                      ) : <p className="text-sm text-gray-400 italic">None</p>}
-                                  </div>
-                              </div>
-
-                              {/* Signatures */}
-                              <div className="mt-12 pt-8 border-t border-gray-200 grid grid-cols-2 gap-12">
-                                  <div>
-                                      <div className="h-12 border-b border-gray-300 mb-2"></div>
-                                      <p className="text-xs text-gray-400 uppercase">Technician Signature</p>
-                                  </div>
-                                  <div>
-                                      <div className="h-12 border-b border-gray-300 mb-2"></div>
-                                      <p className="text-xs text-gray-400 uppercase">Customer Acceptance</p>
-                                  </div>
-                              </div>
                           </div>
-                          
-                          <div className="mt-6 flex justify-end gap-3">
-                              <button onClick={() => setShowReport(false)} className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50">Back to Workflow</button>
-                              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg flex items-center gap-2 hover:bg-blue-700">
-                                  <Printer size={16}/> Print
-                              </button>
+                      )}
+
+                      {workflowTab === 'PARTS' && (
+                          <div className="space-y-4">
+                               {workflowJob.partsUsed?.map(p => (
+                                   <div key={p.productId} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                       <span className="text-sm">{p.name} (x{p.quantity})</span>
+                                       <span className="text-sm font-bold">KES {p.sellPrice * p.quantity}</span>
+                                   </div>
+                               ))}
+                               <div className="border-t pt-4">
+                                   <select className="w-full border rounded p-2 text-sm" value={selectedPartId} onChange={e => setSelectedPartId(e.target.value)} disabled={isSaving}>
+                                       <option value="">Select Part</option>
+                                       {inventory.map(p => <option key={p.id} value={p.id}>{p.name} ({p.stockLevel})</option>)}
+                                   </select>
+                                   <input 
+                                     type="number" 
+                                     className="w-full border rounded p-2 text-sm mt-2" 
+                                     value={addQuantity} 
+                                     onChange={e => setAddQuantity(Number(e.target.value))}
+                                     min={1}
+                                     disabled={isSaving}
+                                   />
+                                   <button 
+                                    onClick={handleAddPartToJob} 
+                                    disabled={!selectedPartId || isSaving}
+                                    className="mt-2 w-full bg-blue-600 text-white py-2 rounded text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                                   >
+                                       {isSaving && <Loader2 size={14} className="animate-spin"/>} Add Part
+                                   </button>
+                               </div>
                           </div>
-                      </div>
-                  ) : (
-                      /* --- STANDARD WORKFLOW VIEW --- */
-                      <>
-                        <div className="flex border-b border-gray-100 bg-white">
-                            <button onClick={() => setWorkflowTab('OVERVIEW')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${workflowTab === 'OVERVIEW' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Overview</button>
-                            <button onClick={() => setWorkflowTab('DIAGNOSIS')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${workflowTab === 'DIAGNOSIS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Diagnosis ({workflowJob.diagnosis?.length || 0})</button>
-                            <button onClick={() => setWorkflowTab('PARTS')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${workflowTab === 'PARTS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Parts ({workflowJob.partsUsed?.length || 0})</button>
-                            <button onClick={() => setWorkflowTab('LABOR')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${workflowTab === 'LABOR' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Labor</button>
-                        </div>
+                      )}
 
-                        <div className="p-6 space-y-6">
-                            {/* OVERVIEW TAB */}
-                            {workflowTab === 'OVERVIEW' && (
-                                <div className="space-y-4">
-                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                                        <h4 className="font-bold text-gray-700 mb-2">Job Status: {workflowJob.status.replace('_', ' ')}</h4>
-                                        <p className="text-sm text-gray-600">Current Assigned Tech: {workflowJob.technicianName || 'Unassigned'}</p>
-                                    </div>
-                                    {workflowJob.status === 'READY' && (
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">Assign Technician</label>
-                                            <select className="w-full border rounded-lg p-2.5" value={selectedTech} onChange={(e) => setSelectedTech(e.target.value)}>
-                                                <option value="">-- Select Tech --</option>
-                                                {availableTechnicians.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                            </select>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            
-                            {/* DIAGNOSIS TAB */}
-                            {workflowTab === 'DIAGNOSIS' && (
-                                <div className="space-y-4">
-                                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
-                                        <h4 className="font-bold text-blue-800 flex items-center gap-2 mb-2"><BrainCircuit size={18}/> AI Assistant</h4>
-                                        <p className="text-sm text-blue-700 mb-3">
-                                            {aiSuggestion ? aiSuggestion : "Need help diagnosing? Tap below for AI analysis."}
-                                        </p>
-                                        {aiError && (
-                                            <div className="mb-3 p-2 bg-red-100 text-red-700 text-xs rounded border border-red-200">
-                                                {aiError}
-                                            </div>
-                                        )}
-                                        <button 
-                                            onClick={handleAiDiagnose} 
-                                            disabled={isAiLoading}
-                                            className="text-xs bg-white text-blue-600 border border-blue-200 px-3 py-1.5 rounded font-medium shadow-sm hover:bg-blue-50 disabled:opacity-70 flex items-center gap-2"
-                                        >
-                                            {isAiLoading ? <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div> : <BrainCircuit size={14}/>}
-                                            {isAiLoading ? 'Analyzing...' : 'Generate Diagnosis'}
-                                        </button>
-                                    </div>
-                                    <div className="space-y-3">
-                                        {workflowJob.diagnosis?.map(d => (
-                                            <div key={d.id} className="p-3 bg-white border rounded-lg shadow-sm">
-                                                <div className="flex justify-between">
-                                                    <span className="font-medium text-gray-800">{d.description}</span>
-                                                    <span className="text-xs bg-gray-100 px-2 py-1 rounded">{d.severity}</span>
-                                                </div>
-                                                <p className="text-xs text-gray-500 mt-1">Fix: {d.proposedFix}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="pt-2 border-t border-gray-100">
-                                        <input type="text" placeholder="Observation" className="w-full border rounded-lg p-2 mb-2 text-sm" value={newDiagnosis.description} onChange={(e) => setNewDiagnosis({...newDiagnosis, description: e.target.value})} />
-                                        <input type="text" placeholder="Proposed Fix" className="w-full border rounded-lg p-2 mb-2 text-sm" value={newDiagnosis.proposedFix} onChange={(e) => setNewDiagnosis({...newDiagnosis, proposedFix: e.target.value})} />
-                                        <button onClick={handleAddDiagnosisItem} className="w-full bg-slate-900 text-white py-2 rounded-lg text-sm font-medium">Add Finding</button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* PARTS TAB */}
-                            {workflowTab === 'PARTS' && (
-                                <div className="space-y-4">
-                                    <div className="bg-gray-50 p-4 rounded-xl">
-                                        <h4 className="font-bold text-gray-700 text-sm mb-3">Requisition Parts</h4>
-                                        <div className="flex gap-2 mb-2">
-                                            <input 
-                                                type="text" 
-                                                placeholder="Search part..." 
-                                                className="flex-1 border rounded-lg p-2 text-sm"
-                                                value={partSearch}
-                                                onChange={(e) => setPartSearch(e.target.value)}
-                                            />
-                                            <input 
-                                                type="number" 
-                                                className="w-20 border rounded-lg p-2 text-sm"
-                                                value={addQuantity}
-                                                min={1}
-                                                onChange={(e) => setAddQuantity(parseInt(e.target.value) || 1)}
-                                            />
-                                        </div>
-                                        {partSearch && (
-                                            <div className="max-h-32 overflow-y-auto bg-white border rounded-lg mb-2 shadow-sm">
-                                                {filteredParts.map(p => (
-                                                    <div 
-                                                        key={p.id} 
-                                                        onClick={() => { setSelectedPartId(p.id); setPartSearch(p.name); }}
-                                                        className="p-2 hover:bg-blue-50 cursor-pointer text-sm border-b last:border-0"
-                                                    >
-                                                        <div className="font-medium text-gray-800">{p.name}</div>
-                                                        <div className="text-xs text-gray-500 flex justify-between">
-                                                            <span>SKU: {p.sku}</span>
-                                                            <span className={p.stockLevel < addQuantity ? 'text-red-500 font-bold' : 'text-green-600'}>
-                                                                Stock: {p.stockLevel}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                        <button 
-                                            onClick={handleAddPartToJob}
-                                            disabled={!selectedPartId}
-                                            className="w-full bg-orange-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
-                                        >
-                                            Add to Job
-                                        </button>
-                                    </div>
-                                    
-                                    <div className="space-y-2">
-                                        {workflowJob.partsUsed?.map((part, idx) => (
-                                            <div key={idx} className="flex justify-between items-center p-3 bg-white border rounded-lg">
-                                                <div>
-                                                    <p className="text-sm font-medium text-gray-800">{part.name}</p>
-                                                    <p className="text-xs text-gray-500">Qty: {part.quantity} x {part.sellPrice}</p>
-                                                </div>
-                                                <span className="font-bold text-gray-900 text-sm">{(part.quantity * part.sellPrice).toLocaleString()}</span>
-                                            </div>
-                                        ))}
-                                        {(!workflowJob.partsUsed || workflowJob.partsUsed.length === 0) && (
-                                            <p className="text-center text-gray-400 text-sm py-4">No parts added.</p>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* LABOR TAB */}
-                            {workflowTab === 'LABOR' && (
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <button onClick={handleClockIn} className="bg-green-100 text-green-700 py-3 rounded-lg font-bold flex flex-col items-center justify-center hover:bg-green-200">
-                                            <Play size={20} className="mb-1"/> Clock In
-                                        </button>
-                                        <button className="bg-red-100 text-red-700 py-3 rounded-lg font-bold flex flex-col items-center justify-center hover:bg-red-200">
-                                            <StopCircle size={20} className="mb-1"/> Clock Out
-                                        </button>
-                                    </div>
-                                    <div className="space-y-2 mt-4">
-                                        {workflowJob.laborLogs?.map(log => (
-                                            <div key={log.id} className="p-3 bg-white border rounded-lg flex justify-between items-center">
-                                                <div>
-                                                    <p className="text-sm font-medium text-gray-800">{log.technicianName}</p>
-                                                    <p className="text-xs text-gray-500">
-                                                        {new Date(log.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 
-                                                        {log.endTime ? ` - ${new Date(log.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : ' (Active)'}
-                                                    </p>
-                                                </div>
-                                                {log.endTime ? (
-                                                    <span className="text-sm font-bold text-gray-900">{log.durationMinutes}m</span>
-                                                ) : (
-                                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded animate-pulse">Running</span>
-                                                )}
-                                                {!log.endTime && (
-                                                    <button onClick={() => handleClockOut(log.id)} className="ml-2 text-xs bg-red-100 text-red-600 px-2 py-1 rounded">Stop</button>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50 sticky bottom-0 z-10">
-                            <button onClick={() => setIsWorkflowModalOpen(false)} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600">Close</button>
-                            {workflowTab === 'OVERVIEW' && (
-                                <button onClick={handleUpdateStatus} className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 flex items-center gap-2">
-                                    Update Status <ArrowRight size={16} />
-                                </button>
-                            )}
-                        </div>
-                      </>
-                  )}
+                      {workflowTab === 'LABOR' && (
+                          <div className="space-y-4">
+                              {workflowJob.laborLogs?.map(l => (
+                                  <div key={l.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                      <div className="text-sm">
+                                          <div>{l.technicianName}</div>
+                                          <div className="text-xs text-gray-500">{new Date(l.startTime).toLocaleTimeString()} - {l.endTime ? new Date(l.endTime).toLocaleTimeString() : 'Active'}</div>
+                                      </div>
+                                      {!l.endTime && <button onClick={() => handleClockOut(l.id)} className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">Stop</button>}
+                                  </div>
+                              ))}
+                              <button onClick={handleClockIn} className="w-full bg-green-600 text-white py-2 rounded text-sm font-bold">Clock In</button>
+                          </div>
+                      )}
+                  </div>
               </div>
           </div>
       )}
     </div>
   );
 };
-
-// Helper Component for List Items
-const JobCardItem: React.FC<{ job: JobCard, onClick: () => void, highlighted?: boolean, userRole: UserRole }> = ({ job, onClick, highlighted, userRole }) => (
-    <div onClick={onClick} className={`p-4 rounded-xl shadow-sm border transition-all cursor-pointer ${highlighted ? 'bg-blue-50 border-blue-400 shadow-md ring-2 ring-blue-200' : 'bg-white border-gray-100 hover:shadow-md'}`}>
-        <div className="flex justify-between items-start mb-2"><span className="font-bold text-gray-800 text-sm">{job.vehicle.plateNumber}</span><span className="text-xs text-gray-500">{new Date(job.entryDate).toLocaleDateString()}</span></div>
-        <p className="text-xs text-gray-600 mb-3 line-clamp-2">{job.issueDescription}</p>
-        <div className="flex items-center justify-between pt-2 border-t border-gray-50"><span className="text-xs font-medium text-gray-500">{job.vehicle.model}</span>{userRole !== 'TECHNICIAN' && job.estimatedCost > 0 && (<span className="text-xs font-bold text-gray-800">KES {job.estimatedCost.toLocaleString()}</span>)}</div>
-    </div>
-);
 
 export default JobCardManager;
