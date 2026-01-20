@@ -244,6 +244,7 @@ export type Department = 'WORKSHOP' | 'FRONT_OFFICE' | 'FINANCE' | 'OPERATIONS' 
 export interface Employee {
   id: string;
   name: string;
+  branchId: string; // Tenant boundary for employee
   role: EmployeeRole; // System Access Level
   department: Department;
   jobTitle: string; // Specific Position (e.g. Senior Mechanic)

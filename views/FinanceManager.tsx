@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Filter, CreditCard, Banknote, Landmark, ArrowUpRight, ArrowDownLeft, X, PieChart, TrendingUp, FileText, BookOpen, ScrollText } from 'lucide-react';
+import { Plus, Filter, CreditCard, Banknote, Landmark, ArrowUpRight, ArrowDownLeft, X, PieChart, TrendingUp, FileText, BookOpen, ScrollText, Building2, MapPin } from 'lucide-react';
 import { Expense, Account, JournalEntry, Branch } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
@@ -13,6 +13,7 @@ interface FinanceManagerProps {
 
 const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfAccounts, setChartOfAccounts, journalEntries, setJournalEntries }) => {
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'GL' | 'JOURNAL' | 'COA'>('OVERVIEW');
+  const [reportScope, setReportScope] = useState<'BRANCH' | 'CONSOLIDATED'>('BRANCH');
 
   const [showJournalModal, setShowJournalModal] = useState(false);
   const [newJournalEntry, setNewJournalEntry] = useState<{
@@ -32,6 +33,48 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
       { month: 'Sep', revenue: 890000, expenses: 650000 },
       { month: 'Oct', revenue: 1250000, expenses: 750000 },
   ];
+
+  // --- Logic for Consolidation vs Branch View ---
+  const filteredJournalEntries = journalEntries.filter(je => 
+      reportScope === 'CONSOLIDATED' ? true : je.branchId === currentBranch.id
+  );
+
+  const getMetrics = () => {
+      // If Consolidated, we use the Master COA balances (assuming they represent the total truth from backend)
+      if (reportScope === 'CONSOLIDATED') {
+          return {
+              assets: chartOfAccounts.filter(a => a.type === 'ASSET').reduce((s, a) => s + a.balance, 0),
+              liabilities: chartOfAccounts.filter(a => a.type === 'LIABILITY').reduce((s, a) => s + a.balance, 0),
+              equity: chartOfAccounts.filter(a => a.type === 'EQUITY').reduce((s, a) => s + a.balance, 0),
+          };
+      } 
+      // If Branch, we calculate solely from the Branch's Journal Entries to ensure data integrity
+      else {
+          const balances: Record<string, number> = { ASSET: 0, LIABILITY: 0, EQUITY: 0 };
+          
+          filteredJournalEntries.forEach(je => {
+              je.lines.forEach(line => {
+                  const acc = chartOfAccounts.find(a => a.id === line.accountId);
+                  if(!acc) return;
+                  
+                  // Accounting Equation Direction
+                  if (['ASSET', 'EXPENSE'].includes(acc.type)) {
+                      balances[acc.type] = (balances[acc.type] || 0) + (line.debit - line.credit);
+                  } else {
+                      balances[acc.type] = (balances[acc.type] || 0) + (line.credit - line.debit);
+                  }
+              });
+          });
+          
+          return {
+              assets: balances['ASSET'],
+              liabilities: balances['LIABILITY'],
+              equity: balances['EQUITY']
+          };
+      }
+  };
+
+  const metrics = getMetrics();
 
   // --- Handlers ---
 
@@ -53,20 +96,18 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
           id: `JE-${Date.now()}`,
           date: new Date().toISOString().split('T')[0],
           description: newJournalEntry.description,
-          branchId: currentBranch.id,
+          branchId: currentBranch.id, // Journal Entries are ALWAYS Branch-Level
           lines: newJournalEntry.lines
       };
 
       setJournalEntries([entry, ...journalEntries]);
       
-      // Update Account Balances
+      // Update Global Account Balances (Accumulating the effect)
       const updatedAccounts = [...chartOfAccounts];
       entry.lines.forEach(line => {
           const accIndex = updatedAccounts.findIndex(a => a.id === line.accountId);
           if(accIndex > -1) {
               const acc = updatedAccounts[accIndex];
-              // Asset/Expense: Debit increases, Credit decreases
-              // Liability/Equity/Income: Credit increases, Debit decreases
               if(['ASSET', 'EXPENSE'].includes(acc.type)) {
                   acc.balance += (line.debit - line.credit);
               } else {
@@ -95,48 +136,80 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
       setNewJournalEntry({ ...newJournalEntry, lines: updatedLines });
   };
 
-  const totalAssets = chartOfAccounts.filter(a => a.type === 'ASSET').reduce((sum, a) => sum + a.balance, 0);
-  const totalLiabilities = chartOfAccounts.filter(a => a.type === 'LIABILITY').reduce((sum, a) => sum + a.balance, 0);
-  const totalEquity = chartOfAccounts.filter(a => a.type === 'EQUITY').reduce((sum, a) => sum + a.balance, 0);
-
   return (
     <div className="p-8 h-full flex flex-col">
       <header className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-3xl font-bold text-gray-800">Finance & Accounting</h2>
-          <p className="text-gray-500">Double-entry ledger for {currentBranch.name}</p>
+          <div className="flex items-center gap-2 text-gray-500 mt-1">
+              {reportScope === 'BRANCH' ? <MapPin size={14}/> : <Building2 size={14}/>}
+              <p className="text-sm">
+                  {reportScope === 'BRANCH' ? `Branch View: ${currentBranch.name}` : 'Consolidated Tenant View'}
+              </p>
+          </div>
         </div>
-        <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
-            <button 
-                onClick={() => setActiveTab('OVERVIEW')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'OVERVIEW' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-                <PieChart size={16} /> Overview
-            </button>
-            <button 
-                onClick={() => setActiveTab('GL')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'GL' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-                <BookOpen size={16} /> General Ledger
-            </button>
-            <button 
-                onClick={() => setActiveTab('JOURNAL')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'JOURNAL' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-                <ScrollText size={16} /> Journal
-            </button>
-            <button 
-                onClick={() => setActiveTab('COA')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'COA' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-            >
-                <Landmark size={16} /> Chart of Accounts
-            </button>
+        
+        <div className="flex gap-4">
+            {/* Scope Toggle */}
+            <div className="bg-white p-1 rounded-lg border border-gray-200 shadow-sm flex">
+                <button
+                    onClick={() => setReportScope('BRANCH')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                        reportScope === 'BRANCH' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    Branch Level
+                </button>
+                <button
+                    onClick={() => setReportScope('CONSOLIDATED')}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                        reportScope === 'CONSOLIDATED' ? 'bg-indigo-900 text-white' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    Tenant Consolidated
+                </button>
+            </div>
+
+            <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
+                <button 
+                    onClick={() => setActiveTab('OVERVIEW')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'OVERVIEW' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                >
+                    <PieChart size={16} /> Overview
+                </button>
+                <button 
+                    onClick={() => setActiveTab('GL')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'GL' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                >
+                    <BookOpen size={16} /> General Ledger
+                </button>
+                <button 
+                    onClick={() => setActiveTab('JOURNAL')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'JOURNAL' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                >
+                    <ScrollText size={16} /> Journal
+                </button>
+                <button 
+                    onClick={() => setActiveTab('COA')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'COA' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                >
+                    <Landmark size={16} /> COA
+                </button>
+            </div>
         </div>
       </header>
 
       {/* --- OVERVIEW TAB --- */}
       {activeTab === 'OVERVIEW' && (
           <div className="space-y-6 animate-in fade-in">
+              {/* Report Context Banner */}
+              <div className={`p-3 rounded-lg border text-sm flex items-center gap-2 ${reportScope === 'CONSOLIDATED' ? 'bg-indigo-50 border-indigo-100 text-indigo-800' : 'bg-white border-gray-200 text-gray-600'}`}>
+                  <Filter size={16}/> 
+                  Viewing <strong>{reportScope === 'CONSOLIDATED' ? 'All Entities' : currentBranch.name}</strong> Financial Position.
+                  {reportScope === 'BRANCH' && <span className="text-xs text-gray-400 ml-auto">Derived from Branch Journal Entries</span>}
+                  {reportScope === 'CONSOLIDATED' && <span className="text-xs text-indigo-400 ml-auto">Aggregated Tenant Balances</span>}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                   <div className="flex justify-between items-start mb-4">
@@ -144,7 +217,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                      <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded">Asset Value</span>
                   </div>
                   <p className="text-sm text-gray-500">Total Assets</p>
-                  <h3 className="text-2xl font-bold text-gray-900">KES {totalAssets.toLocaleString()}</h3>
+                  <h3 className="text-2xl font-bold text-gray-900">KES {metrics.assets.toLocaleString()}</h3>
                 </div>
                 
                 <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
@@ -152,7 +225,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                      <div className="p-2 bg-red-50 text-red-600 rounded-lg"><ArrowUpRight size={24}/></div>
                   </div>
                   <p className="text-sm text-gray-500">Total Liabilities</p>
-                  <h3 className="text-2xl font-bold text-gray-900">KES {totalLiabilities.toLocaleString()}</h3>
+                  <h3 className="text-2xl font-bold text-gray-900">KES {metrics.liabilities.toLocaleString()}</h3>
                 </div>
 
                 <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
@@ -160,7 +233,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                      <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><Banknote size={24}/></div>
                   </div>
                   <p className="text-sm text-gray-500">Net Equity</p>
-                  <h3 className="text-2xl font-bold text-gray-900">KES {totalEquity.toLocaleString()}</h3>
+                  <h3 className="text-2xl font-bold text-gray-900">KES {metrics.equity.toLocaleString()}</h3>
                 </div>
               </div>
 
@@ -187,12 +260,16 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
           </div>
       )}
 
-      {/* --- GENERAL LEDGER / COA TAB --- */}
-      {(activeTab === 'GL' || activeTab === 'COA') && (
+      {/* --- CHART OF ACCOUNTS TAB (Tenant Level) --- */}
+      {activeTab === 'COA' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col animate-in fade-in">
               <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                  <h3 className="font-bold text-gray-700">Chart of Accounts</h3>
-                  <button className="text-sm text-blue-600 hover:underline">Download Trial Balance</button>
+                  <div className="flex items-center gap-2">
+                      <Building2 size={18} className="text-indigo-600"/>
+                      <h3 className="font-bold text-gray-700">Master Chart of Accounts</h3>
+                      <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">Tenant Level</span>
+                  </div>
+                  <button className="text-sm text-blue-600 hover:underline">Download Master Structure</button>
               </div>
               <div className="overflow-auto flex-1">
                   <table className="w-full text-left text-sm">
@@ -202,7 +279,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                               <th className="p-4">Account Name</th>
                               <th className="p-4">Type</th>
                               <th className="p-4">Subtype</th>
-                              <th className="p-4 text-right">Balance</th>
+                              <th className="p-4 text-right">Global Balance</th>
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -232,55 +309,70 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
           </div>
       )}
 
-      {/* --- JOURNAL TAB --- */}
-      {activeTab === 'JOURNAL' && (
+      {/* --- JOURNAL & GL TABS --- */}
+      {(activeTab === 'JOURNAL' || activeTab === 'GL') && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col animate-in fade-in">
               <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                  <h3 className="font-bold text-gray-700">General Journal</h3>
-                  <button 
-                    onClick={() => setShowJournalModal(true)}
-                    className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-slate-800"
-                  >
-                      <Plus size={16} /> New Entry
-                  </button>
+                  <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-gray-700">{activeTab === 'GL' ? 'General Ledger' : 'Journal Entries'}</h3>
+                      {reportScope === 'BRANCH' && <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">Filtered: {currentBranch.name}</span>}
+                  </div>
+                  {activeTab === 'JOURNAL' && (
+                      <button 
+                        onClick={() => setShowJournalModal(true)}
+                        className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-slate-800"
+                      >
+                          <Plus size={16} /> New Entry
+                      </button>
+                  )}
               </div>
+              
               <div className="overflow-auto flex-1 p-4 space-y-4">
-                  {journalEntries.map(entry => (
-                      <div key={entry.id} className="border border-gray-200 rounded-xl overflow-hidden">
-                          <div className="bg-gray-50 p-3 flex justify-between items-center border-b border-gray-200">
-                              <div>
-                                  <span className="font-bold text-gray-800 mr-3">{entry.date}</span>
-                                  <span className="text-gray-600 font-medium">{entry.description}</span>
-                                  <span className="text-xs text-gray-400 ml-2">#{entry.id}</span>
+                  {filteredJournalEntries.length > 0 ? (
+                      filteredJournalEntries.map(entry => (
+                          <div key={entry.id} className="border border-gray-200 rounded-xl overflow-hidden">
+                              <div className="bg-gray-50 p-3 flex justify-between items-center border-b border-gray-200">
+                                  <div>
+                                      <span className="font-bold text-gray-800 mr-3">{entry.date}</span>
+                                      <span className="text-gray-600 font-medium">{entry.description}</span>
+                                      <span className="text-xs text-gray-400 ml-2">#{entry.id}</span>
+                                  </div>
+                                  <span className={`text-xs border px-2 py-1 rounded ${entry.branchId === currentBranch.id ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 text-gray-500'}`}>
+                                      {entry.branchId}
+                                  </span>
                               </div>
-                              <span className="text-xs bg-white border px-2 py-1 rounded text-gray-500">{entry.branchId}</span>
+                              <table className="w-full text-sm">
+                                  <thead>
+                                      <tr className="text-xs text-gray-400 border-b border-gray-100">
+                                          <th className="p-2 text-left w-1/2">Account</th>
+                                          <th className="p-2 text-right">Debit</th>
+                                          <th className="p-2 text-right">Credit</th>
+                                      </tr>
+                                  </thead>
+                                  <tbody>
+                                      {entry.lines.map((line, idx) => {
+                                          const account = chartOfAccounts.find(a => a.id === line.accountId);
+                                          return (
+                                              <tr key={idx} className="hover:bg-slate-50">
+                                                  <td className="p-2 pl-4">
+                                                      <span className="font-medium text-gray-700">{account?.name || line.accountId}</span>
+                                                      <span className="text-xs text-gray-400 ml-2 font-mono">{account?.code}</span>
+                                                  </td>
+                                                  <td className="p-2 text-right font-mono">{line.debit > 0 ? line.debit.toLocaleString() : '-'}</td>
+                                                  <td className="p-2 text-right font-mono">{line.credit > 0 ? line.credit.toLocaleString() : '-'}</td>
+                                              </tr>
+                                          );
+                                      })}
+                                  </tbody>
+                              </table>
                           </div>
-                          <table className="w-full text-sm">
-                              <thead>
-                                  <tr className="text-xs text-gray-400 border-b border-gray-100">
-                                      <th className="p-2 text-left w-1/2">Account</th>
-                                      <th className="p-2 text-right">Debit</th>
-                                      <th className="p-2 text-right">Credit</th>
-                                  </tr>
-                              </thead>
-                              <tbody>
-                                  {entry.lines.map((line, idx) => {
-                                      const account = chartOfAccounts.find(a => a.id === line.accountId);
-                                      return (
-                                          <tr key={idx} className="hover:bg-slate-50">
-                                              <td className="p-2 pl-4">
-                                                  <span className="font-medium text-gray-700">{account?.name || line.accountId}</span>
-                                                  <span className="text-xs text-gray-400 ml-2 font-mono">{account?.code}</span>
-                                              </td>
-                                              <td className="p-2 text-right font-mono">{line.debit > 0 ? line.debit.toLocaleString() : '-'}</td>
-                                              <td className="p-2 text-right font-mono">{line.credit > 0 ? line.credit.toLocaleString() : '-'}</td>
-                                          </tr>
-                                      );
-                                  })}
-                              </tbody>
-                          </table>
+                      ))
+                  ) : (
+                      <div className="text-center py-12 text-gray-400">
+                          <ScrollText size={48} className="mx-auto mb-2 opacity-20"/>
+                          <p>No journal entries found for this view scope.</p>
                       </div>
-                  ))}
+                  )}
               </div>
           </div>
       )}
@@ -295,6 +387,11 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                   </div>
                   
                   <div className="p-6 overflow-y-auto space-y-4">
+                      <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-sm border border-blue-100">
+                          <MapPin size={16}/>
+                          Posting to Branch: <strong>{currentBranch.name}</strong> (Branch-Level Entry)
+                      </div>
+
                       <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Description / Memo</label>
                           <input 

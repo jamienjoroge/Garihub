@@ -13,7 +13,7 @@ import HRManager from './views/HRManager';
 import SettingsManager from './views/SettingsManager';
 import ProjectManager from './views/ProjectManager';
 import AssetManager from './views/AssetManager';
-import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment } from './types';
+import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment, Employee } from './types';
 import { ShieldAlert } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -42,7 +42,31 @@ const App: React.FC = () => {
       { id: 'SP-003', name: 'Computer Diagnosis (Paid)', description: 'OBD-II Scan and Report', basePrice: 1500, includesParts: false }
   ]);
 
-  // --- VEHICLE REGISTRY (LIFTED) ---
+  // --- GLOBAL MASTER DATA (Lifted for Tenancy/Branch Boundaries) ---
+  const [employees, setEmployees] = useState<Employee[]>([
+    { 
+      id: 'EMP-001', name: 'David Omondi', branchId: 'BR-HQ', role: 'TECHNICIAN', department: 'WORKSHOP', jobTitle: 'Senior Mechanic',
+      employmentType: 'FULL_TIME', 
+      phone: '0711222333', idNumber: '22334455', kraPin: 'A00112233X', 
+      baseSalary: 65000, status: 'ACTIVE', skills: ['Suspension', 'Engine'], joinedDate: '2022-01-15',
+      statutoryDetails: { deductNSSF: true, deductSHIF: true, deductHousingLevy: true, deductPAYE: true }
+    },
+    { 
+      id: 'EMP-002', name: 'Samuel K.', branchId: 'BR-HQ', role: 'TECHNICIAN', department: 'WORKSHOP', jobTitle: 'Auto Electrician',
+      employmentType: 'FREELANCE', 
+      phone: '0722333444', idNumber: '33445566', kraPin: 'A00223344Y', 
+      baseSalary: 0, commissionRate: 40, status: 'ACTIVE', skills: ['Electrical', 'Diagnostics'], joinedDate: '2023-05-10',
+      statutoryDetails: { deductNSSF: false, deductSHIF: false, deductHousingLevy: false, deductPAYE: true }
+    },
+    { 
+      id: 'EMP-003', name: 'Mercy Wanjiku', branchId: 'BR-WL', role: 'RECEPTIONIST', department: 'FRONT_OFFICE', jobTitle: 'Service Advisor',
+      employmentType: 'CONTRACT', 
+      phone: '0733444555', idNumber: '11223344', kraPin: 'A00334455Z', 
+      baseSalary: 35000, status: 'ACTIVE', skills: ['Customer Service'], joinedDate: '2023-08-01',
+      statutoryDetails: { deductNSSF: true, deductSHIF: true, deductHousingLevy: true, deductPAYE: true }
+    }
+  ]);
+
   const [vehicles, setVehicles] = useState<Vehicle[]>([
     {
       id: 'V1',
@@ -519,7 +543,34 @@ const App: React.FC = () => {
       setTimeout(() => setHighlightedOrderId(null), 3000);
   };
 
-  // --- FINANCE INTEGRATION ---
+  // --- FINANCE INTEGRATION: ACCRUAL BASIS ---
+  
+  // 1. Invoice Created: DR Accounts Receivable, CR Sales
+  const handleRecordInvoicePosting = (invoice: Invoice) => {
+      const amount = invoice.amount;
+      const je: JournalEntry = {
+          id: `JE-${Date.now()}`,
+          date: new Date().toISOString().split('T')[0],
+          description: `Invoice Created #${invoice.id} (${invoice.customerName})`,
+          reference: invoice.id,
+          branchId: invoice.branchId,
+          lines: [
+              { accountId: '1200', debit: amount, credit: 0 }, // AR (Debit Asset)
+              { accountId: '4000', debit: 0, credit: amount }  // Sales Income (Credit Revenue)
+          ]
+      };
+      setJournalEntries([je, ...journalEntries]);
+      
+      // Update GL Balances
+      const updatedAccounts = chartOfAccounts.map(acc => {
+          if (acc.id === '1200') return { ...acc, balance: acc.balance + amount }; // AR increases
+          if (acc.id === '4000') return { ...acc, balance: acc.balance + amount }; // Income increases
+          return acc;
+      });
+      setChartOfAccounts(updatedAccounts);
+  };
+
+  // 2. Payment Received: DR Bank, CR Accounts Receivable
   const handleRecordPayment = (invoice: Invoice) => {
     // 1. Update Invoice Status
     const updatedInvoices = invoices.map(inv => 
@@ -527,24 +578,25 @@ const App: React.FC = () => {
     );
     setInvoices(updatedInvoices);
 
-    // 2. Post to GL (Simulated Cash Basis)
+    // 2. Post to GL (Accrual Settlement)
     const amount = invoice.amount;
     const je: JournalEntry = {
         id: `JE-${Date.now()}`,
         date: new Date().toISOString().split('T')[0],
         description: `Payment for Invoice #${invoice.id} (${invoice.customerName})`,
+        reference: invoice.id,
         branchId: invoice.branchId,
         lines: [
-            { accountId: '1010', debit: amount, credit: 0 }, // Bank - KCB (Debit Asset)
-            { accountId: '4000', debit: 0, credit: amount }  // Sales - Service (Credit Income)
+            { accountId: '1010', debit: amount, credit: 0 }, // Bank (Debit Asset)
+            { accountId: '1200', debit: 0, credit: amount }  // AR (Credit Asset - Reduces AR)
         ]
     };
     setJournalEntries([je, ...journalEntries]);
 
     // 3. Update Account Balances
     const updatedAccounts = chartOfAccounts.map(acc => {
-        if (acc.id === '1010') return { ...acc, balance: acc.balance + amount };
-        if (acc.id === '4000') return { ...acc, balance: acc.balance + amount };
+        if (acc.id === '1010') return { ...acc, balance: acc.balance + amount }; // Bank increases
+        if (acc.id === '1200') return { ...acc, balance: acc.balance - amount }; // AR decreases
         return acc;
     });
     setChartOfAccounts(updatedAccounts);
@@ -646,6 +698,7 @@ const App: React.FC = () => {
             highlightedOrderId={highlightedOrderId}
             currentBranch={currentBranch}
             onRecordPayment={handleRecordPayment}
+            onInvoiceCreated={handleRecordInvoicePosting}
         />;
       case 'FINANCE':
         return <FinanceManager 
@@ -673,7 +726,11 @@ const App: React.FC = () => {
             currentBranch={currentBranch}
         />;
       case 'HR':
-        return <HRManager />;
+        return <HRManager 
+            currentBranch={currentBranch}
+            employees={employees}
+            setEmployees={setEmployees}
+        />;
       case 'SETTINGS':
          return <SettingsManager 
             branches={branches}
