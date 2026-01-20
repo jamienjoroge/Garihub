@@ -1,0 +1,7 @@
+{
+  "name": "GariHub - Garage Management System",
+  "description": "A comprehensive, multi-tenant automotive garage management platform tailored for the Kenyan market, facilitating garage operations and vehicle ownership history.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

@@ -1,0 +1,219 @@
+import React, { useState } from 'react';
+import { ClipboardCheck, Search, Plus, Camera, CheckCircle2, AlertTriangle, XCircle, FileText, BadgeCheck } from 'lucide-react';
+import { generateCustomerReport } from '../services/geminiService';
+
+interface InspectionItem {
+  id: string;
+  category: string;
+  label: string;
+  status: 'PASS' | 'FAIL' | 'WARN' | 'PENDING';
+  note?: string;
+}
+
+interface Inspection {
+  id: string;
+  plateNumber: string;
+  model: string;
+  type: 'PRE-PURCHASE' | 'SAFETY' | 'VALUATION';
+  status: 'IN_PROGRESS' | 'COMPLETED';
+  date: string;
+  overallScore?: number;
+}
+
+const InspectionManager: React.FC = () => {
+  const [inspections, setInspections] = useState<Inspection[]>([
+    {
+      id: 'INS-2024-001',
+      plateNumber: 'KDK 999L',
+      model: 'Nissan X-Trail',
+      type: 'PRE-PURCHASE',
+      status: 'IN_PROGRESS',
+      date: '2023-10-27'
+    },
+    {
+      id: 'INS-2024-002',
+      plateNumber: 'KCC 234P',
+      model: 'Toyota Prado',
+      type: 'VALUATION',
+      status: 'COMPLETED',
+      date: '2023-10-25',
+      overallScore: 88
+    }
+  ]);
+
+  const [activeInspection, setActiveInspection] = useState<Inspection | null>(null);
+  const [checklist, setChecklist] = useState<InspectionItem[]>([
+    { id: '1', category: 'Engine', label: 'Oil Level & Quality', status: 'PENDING' },
+    { id: '2', category: 'Engine', label: 'Belts & Hoses Condition', status: 'PENDING' },
+    { id: '3', category: 'Suspension', label: 'Shock Absorbers', status: 'PENDING' },
+    { id: '4', category: 'Brakes', label: 'Pad Thickness > 3mm', status: 'PENDING' },
+    { id: '5', category: 'Body', label: 'Paint Consistency', status: 'PENDING' },
+    { id: '6', category: 'Interior', label: 'Dashboard Warnings', status: 'PENDING' },
+  ]);
+
+  const updateItemStatus = (id: string, status: InspectionItem['status']) => {
+    setChecklist(checklist.map(item => item.id === id ? { ...item, status } : item));
+  };
+
+  const handleGenerateReport = async () => {
+    if (!activeInspection) return;
+    // Mocking report generation
+    alert("Generating Verified Inspection Certificate...");
+    setActiveInspection(null);
+  };
+
+  return (
+    <div className="p-8 h-full flex flex-col">
+      <header className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800">Vehicle Inspections</h2>
+          <p className="text-gray-500">Perform standardized pre-purchase and safety checks.</p>
+        </div>
+        {!activeInspection && (
+          <button 
+            onClick={() => setActiveInspection({
+                id: `INS-${Date.now()}`,
+                plateNumber: 'NEW',
+                model: 'Unknown',
+                type: 'PRE-PURCHASE',
+                status: 'IN_PROGRESS',
+                date: new Date().toISOString().split('T')[0]
+            })}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium flex items-center gap-2 shadow-sm transition-all"
+          >
+            <Plus size={20} />
+            <span>New Inspection</span>
+          </button>
+        )}
+      </header>
+
+      {/* Main Content Area */}
+      <div className="flex gap-6 h-full overflow-hidden">
+        
+        {/* Inspection List (Sidebar) */}
+        <div className={`w-1/3 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col ${activeInspection ? 'hidden md:flex' : 'flex'}`}>
+            <div className="p-4 border-b border-gray-100">
+                 <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                    <input type="text" placeholder="Search inspections..." className="w-full pl-9 pr-4 py-2 bg-gray-50 rounded-lg text-sm outline-none focus:ring-1 focus:ring-blue-300" />
+                 </div>
+            </div>
+            <div className="overflow-y-auto flex-1">
+                {inspections.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-center p-6">
+                        <div className="bg-gray-100 p-4 rounded-full mb-3">
+                            <ClipboardCheck size={32} className="text-gray-400" />
+                        </div>
+                        <h3 className="text-gray-900 font-medium mb-1">No Inspections</h3>
+                        <p className="text-sm text-gray-500">
+                            Scheduled and past inspections will appear here.
+                        </p>
+                    </div>
+                ) : (
+                    inspections.map(ins => (
+                        <div 
+                            key={ins.id} 
+                            onClick={() => setActiveInspection(ins)}
+                            className={`p-4 border-b border-gray-50 cursor-pointer hover:bg-slate-50 transition-colors ${activeInspection?.id === ins.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
+                        >
+                            <div className="flex justify-between items-start mb-1">
+                                <span className="font-bold text-gray-800">{ins.plateNumber}</span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ins.status === 'COMPLETED' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    {ins.status.replace('_', ' ')}
+                                </span>
+                            </div>
+                            <p className="text-sm text-gray-600 mb-2">{ins.model}</p>
+                            <div className="flex items-center gap-2 text-xs text-gray-400">
+                                <BadgeCheck size={14} /> {ins.type}
+                                <span>•</span>
+                                {ins.date}
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+
+        {/* Active Inspection Workspace */}
+        <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
+             {activeInspection ? (
+                 <>
+                    {/* Workspace Header */}
+                    <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <h3 className="text-xl font-bold text-gray-900">{activeInspection.plateNumber}</h3>
+                                <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-xs font-semibold uppercase">{activeInspection.type}</span>
+                            </div>
+                            <p className="text-gray-500 text-sm mt-1">Inspection in progress</p>
+                        </div>
+                        <div className="flex gap-2">
+                             <button className="text-gray-600 bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
+                                <Camera size={16} /> Add Photos
+                             </button>
+                             <button 
+                                onClick={handleGenerateReport}
+                                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-green-700"
+                             >
+                                <FileText size={16} /> Finalize Report
+                             </button>
+                        </div>
+                    </div>
+
+                    {/* Checklist */}
+                    <div className="flex-1 overflow-y-auto p-6">
+                        <div className="space-y-6">
+                            {['Engine', 'Suspension', 'Brakes', 'Body', 'Interior'].map(cat => {
+                                const items = checklist.filter(i => i.category === cat);
+                                if (items.length === 0) return null;
+                                return (
+                                    <div key={cat} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                        <h4 className="font-bold text-slate-700 mb-3 uppercase text-xs tracking-wider">{cat}</h4>
+                                        <div className="space-y-3">
+                                            {items.map(item => (
+                                                <div key={item.id} className="bg-white p-3 rounded-lg border border-gray-200 flex items-center justify-between shadow-sm">
+                                                    <span className="text-gray-700 font-medium">{item.label}</span>
+                                                    <div className="flex gap-2">
+                                                        <button 
+                                                            onClick={() => updateItemStatus(item.id, 'PASS')}
+                                                            className={`p-1.5 rounded-md transition-all ${item.status === 'PASS' ? 'bg-green-100 text-green-600 ring-2 ring-green-500' : 'text-gray-300 hover:bg-gray-100'}`}
+                                                        >
+                                                            <CheckCircle2 size={20} />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => updateItemStatus(item.id, 'WARN')}
+                                                            className={`p-1.5 rounded-md transition-all ${item.status === 'WARN' ? 'bg-yellow-100 text-yellow-600 ring-2 ring-yellow-500' : 'text-gray-300 hover:bg-gray-100'}`}
+                                                        >
+                                                            <AlertTriangle size={20} />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => updateItemStatus(item.id, 'FAIL')}
+                                                            className={`p-1.5 rounded-md transition-all ${item.status === 'FAIL' ? 'bg-red-100 text-red-600 ring-2 ring-red-500' : 'text-gray-300 hover:bg-gray-100'}`}
+                                                        >
+                                                            <XCircle size={20} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                 </>
+             ) : (
+                 <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                     <ClipboardCheck size={64} className="mb-4 text-gray-200" />
+                     <p className="text-lg font-medium">Select an inspection to view details</p>
+                     <p className="text-sm">or start a new pre-purchase inspection</p>
+                 </div>
+             )}
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+export default InspectionManager;
