@@ -16,6 +16,7 @@ const initialHistory: ServiceRecord[] = [
   {
     id: 'REC-1',
     vehicleId: 'V-MY-001',
+    eventType: 'SERVICE_RECORD',
     date: '2023-11-15',
     garageName: 'Nairobi Auto Care',
     description: 'Major Service (100k km)',
@@ -31,6 +32,7 @@ const initialHistory: ServiceRecord[] = [
   {
     id: 'REC-2',
     vehicleId: 'V-MY-001',
+    eventType: 'SERVICE_RECORD',
     date: '2023-06-10',
     garageName: 'Express Garage Westlands',
     description: 'Brake Inspection & Alignment',

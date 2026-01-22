@@ -48,6 +48,23 @@ export interface ServicePackage {
   includesParts: boolean;
 }
 
+// --- SYSTEM ALERTS & AUDIT ---
+export type SystemEventType = 
+  | 'PaymentFailed' 
+  | 'AiServiceUnavailable' 
+  | 'StockTransferDiscrepancyDetected' 
+  | 'TaxCalculationMismatchDetected';
+
+export interface SystemAlert {
+  id: string;
+  type: SystemEventType;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  message: string;
+  details?: string;
+  timestamp: string;
+  status: 'OPEN' | 'RESOLVED' | 'IGNORED';
+}
+
 // --- ERP CORE: ACCOUNTING ---
 export type AccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'INCOME' | 'EXPENSE';
 
@@ -187,10 +204,13 @@ export interface Expense {
   paidBy: string;
 }
 
-// --- IMMUTABLE SERVICE LEDGER ---
+// --- IMMUTABLE SERVICE LEDGER (APPEND-ONLY) ---
+export type LedgerEventType = 'SERVICE_RECORD' | 'CORRECTION_ISSUED' | 'OWNERSHIP_TRANSFERRED';
+
 export interface ServiceRecord {
   id: string;
   vehicleId: string; // Decoupled from owner to stay with car
+  eventType: LedgerEventType; // Determines the type of block
   date: string;
   garageName: string;
   garageId?: string;
@@ -199,6 +219,16 @@ export interface ServiceRecord {
   cost: number;
   items: string[];
   
+  // Correction & Transfer Metadata
+  referenceRecordId?: string; // Points to the record being corrected
+  metadata?: {
+      correctionReason?: string;
+      originalValues?: any;
+      previousOwner?: string;
+      newOwner?: string;
+      transferNotes?: string;
+  };
+
   // Audit / Blockchain-lite fields
   hash: string; // Cryptographic-like hash of the record content + prevHash
   previousHash: string; // Links to previous record for this VIN

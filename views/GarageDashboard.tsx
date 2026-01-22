@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, 
   LineChart, Line, AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
-import { TrendingUp, Users, Wrench, AlertCircle, DollarSign, Package, ClipboardCheck, Clock, CheckCircle2, ArrowUpRight, ArrowDownRight, Briefcase, FileText, Activity } from 'lucide-react';
-import { DashboardStats, UserRole } from '../types';
+import { TrendingUp, Users, Wrench, AlertCircle, DollarSign, Package, ClipboardCheck, Clock, CheckCircle2, ArrowUpRight, ArrowDownRight, Briefcase, FileText, Activity, AlertTriangle, ShieldAlert, WifiOff, RefreshCcw } from 'lucide-react';
+import { DashboardStats, UserRole, SystemAlert } from '../types';
 
 interface DashboardProps {
   stats: DashboardStats;
@@ -46,8 +46,63 @@ const urgentActions = [
     { id: 3, type: 'JOB', message: 'KCD 123A stuck in "Waiting Parts" > 3 days', time: '1d ago' },
 ];
 
+// --- MOCK SYSTEM ALERTS ---
+const systemAlerts: SystemAlert[] = [
+    {
+        id: 'SYS-001',
+        type: 'PaymentFailed',
+        severity: 'HIGH',
+        message: 'M-PESA Transaction Timeout',
+        details: 'Invoice #INV-2024-009. Gateway response: 408 Request Timeout.',
+        timestamp: '10 mins ago',
+        status: 'OPEN'
+    },
+    {
+        id: 'SYS-002',
+        type: 'AiServiceUnavailable',
+        severity: 'MEDIUM',
+        message: 'Gemini Diagnosis Offline',
+        details: 'Job #JOB-2024-001. API Quota Exceeded or Network Error.',
+        timestamp: '1 hour ago',
+        status: 'RESOLVED'
+    },
+    {
+        id: 'SYS-003',
+        type: 'StockTransferDiscrepancyDetected',
+        severity: 'CRITICAL',
+        message: 'Inventory Mismatch during Transfer',
+        details: 'Transfer #TR-882 (HQ -> Westlands). Sent: 10, Received: 8.',
+        timestamp: 'Yesterday',
+        status: 'OPEN'
+    },
+    {
+        id: 'SYS-004',
+        type: 'TaxCalculationMismatchDetected',
+        severity: 'HIGH',
+        message: 'VAT Ledger Variance',
+        details: 'Invoice #INV-2024-012. Calculated: 16%, Posted: 14%. Check Tax Settings.',
+        timestamp: '2 days ago',
+        status: 'OPEN'
+    }
+];
+
 const GarageDashboard: React.FC<DashboardProps> = ({ stats, role }) => {
-  
+  const [alerts, setAlerts] = useState<SystemAlert[]>(systemAlerts);
+
+  const dismissAlert = (id: string) => {
+      setAlerts(alerts.map(a => a.id === id ? { ...a, status: 'RESOLVED' } : a));
+  };
+
+  const getAlertIcon = (type: string) => {
+      switch(type) {
+          case 'PaymentFailed': return <DollarSign size={16} className="text-red-600"/>;
+          case 'AiServiceUnavailable': return <WifiOff size={16} className="text-orange-600"/>;
+          case 'StockTransferDiscrepancyDetected': return <Package size={16} className="text-purple-600"/>;
+          case 'TaxCalculationMismatchDetected': return <ShieldAlert size={16} className="text-red-600"/>;
+          default: return <AlertCircle size={16}/>;
+      }
+  };
+
   // --- MANAGER DASHBOARD RENDER ---
   if (role === 'MANAGER') {
       return (
@@ -216,13 +271,50 @@ const GarageDashboard: React.FC<DashboardProps> = ({ stats, role }) => {
 
                 {/* Right Column: Action Center */}
                 <div className="space-y-6">
+                    {/* System Health & Audit Log (New Section) */}
+                    <div className="bg-white p-6 rounded-2xl border border-red-100 shadow-sm ring-1 ring-red-50">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <ShieldAlert size={20} className="text-red-600" />
+                                <h3 className="text-lg font-bold text-gray-800">System Alerts</h3>
+                            </div>
+                            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold">{alerts.filter(a => a.status === 'OPEN').length} Active</span>
+                        </div>
+                        <div className="space-y-3">
+                            {alerts.length > 0 ? (
+                                alerts.map(alert => (
+                                    <div key={alert.id} className={`p-3 rounded-lg border flex items-start gap-3 ${alert.status === 'RESOLVED' ? 'bg-gray-50 border-gray-100 opacity-60' : 'bg-white border-red-100 shadow-sm'}`}>
+                                        <div className={`p-1.5 rounded-md shrink-0 ${alert.status === 'RESOLVED' ? 'bg-gray-200' : 'bg-red-50'}`}>
+                                            {getAlertIcon(alert.type)}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex justify-between items-start">
+                                                <h4 className="text-xs font-bold text-gray-800">{alert.type.replace(/([A-Z])/g, ' $1').trim()}</h4>
+                                                <span className="text-[10px] text-gray-400">{alert.timestamp}</span>
+                                            </div>
+                                            <p className="text-xs text-gray-600 mt-1">{alert.message}</p>
+                                            <p className="text-[10px] text-gray-400 mt-0.5 italic">{alert.details}</p>
+                                            {alert.status === 'OPEN' && (
+                                                <button onClick={() => dismissAlert(alert.id)} className="mt-2 text-[10px] text-blue-600 font-bold hover:underline flex items-center gap-1">
+                                                    <CheckCircle2 size={10}/> Mark Resolved
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-sm text-gray-500 italic text-center py-4">System Healthy. No anomalies detected.</p>
+                            )}
+                        </div>
+                    </div>
+
                     {/* Urgent Actions */}
                     <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                         <div className="flex items-center gap-2 mb-4">
-                            <div className="bg-red-50 p-2 rounded-lg text-red-600">
-                                <AlertCircle size={20}/>
+                            <div className="bg-orange-50 p-2 rounded-lg text-orange-600">
+                                <AlertTriangle size={20}/>
                             </div>
-                            <h3 className="text-lg font-bold text-gray-800">Action Required</h3>
+                            <h3 className="text-lg font-bold text-gray-800">Tasks Required</h3>
                         </div>
                         <div className="space-y-3">
                             {urgentActions.map(action => (

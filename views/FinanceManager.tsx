@@ -40,7 +40,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
   );
 
   const getMetrics = () => {
-      // If Consolidated, we use the Master COA balances (assuming they represent the total truth from backend)
+      // If Consolidated, we use the Master COA balances (Derived from all JEs in App.tsx)
       if (reportScope === 'CONSOLIDATED') {
           return {
               assets: chartOfAccounts.filter(a => a.type === 'ASSET').reduce((s, a) => s + a.balance, 0),
@@ -48,7 +48,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
               equity: chartOfAccounts.filter(a => a.type === 'EQUITY').reduce((s, a) => s + a.balance, 0),
           };
       } 
-      // If Branch, we calculate solely from the Branch's Journal Entries to ensure data integrity
+      // If Branch, we calculate solely from the Branch's Journal Entries locally for display
       else {
           const balances: Record<string, number> = { ASSET: 0, LIABILITY: 0, EQUITY: 0 };
           
@@ -56,8 +56,6 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
               je.lines.forEach(line => {
                   const acc = chartOfAccounts.find(a => a.id === line.accountId);
                   if(!acc) return;
-                  
-                  // Accounting Equation Direction
                   if (['ASSET', 'EXPENSE'].includes(acc.type)) {
                       balances[acc.type] = (balances[acc.type] || 0) + (line.debit - line.credit);
                   } else {
@@ -83,7 +81,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
       const totalDebit = newJournalEntry.lines.reduce((sum, l) => sum + l.debit, 0);
       const totalCredit = newJournalEntry.lines.reduce((sum, l) => sum + l.credit, 0);
 
-      if (totalDebit !== totalCredit) {
+      if (Math.abs(totalDebit - totalCredit) > 0.01) {
           alert(`Unbalanced Entry! Debits: ${totalDebit}, Credits: ${totalCredit}`);
           return;
       }
@@ -100,23 +98,9 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
           lines: newJournalEntry.lines
       };
 
+      // Only update Journal Entries. Balances are derived automatically in App.tsx
       setJournalEntries([entry, ...journalEntries]);
       
-      // Update Global Account Balances (Accumulating the effect)
-      const updatedAccounts = [...chartOfAccounts];
-      entry.lines.forEach(line => {
-          const accIndex = updatedAccounts.findIndex(a => a.id === line.accountId);
-          if(accIndex > -1) {
-              const acc = updatedAccounts[accIndex];
-              if(['ASSET', 'EXPENSE'].includes(acc.type)) {
-                  acc.balance += (line.debit - line.credit);
-              } else {
-                  acc.balance += (line.credit - line.debit);
-              }
-          }
-      });
-      setChartOfAccounts(updatedAccounts);
-
       setShowJournalModal(false);
       setNewJournalEntry({ description: '', lines: [{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }] });
   };
@@ -136,6 +120,8 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
       setNewJournalEntry({ ...newJournalEntry, lines: updatedLines });
   };
 
+  // ... (Render logic remains largely same, just simpler handlers)
+  
   return (
     <div className="p-8 h-full flex flex-col">
       <header className="flex justify-between items-center mb-6">
@@ -171,30 +157,10 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
             </div>
 
             <div className="flex bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
-                <button 
-                    onClick={() => setActiveTab('OVERVIEW')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'OVERVIEW' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                    <PieChart size={16} /> Overview
-                </button>
-                <button 
-                    onClick={() => setActiveTab('GL')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'GL' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                    <BookOpen size={16} /> General Ledger
-                </button>
-                <button 
-                    onClick={() => setActiveTab('JOURNAL')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'JOURNAL' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                    <ScrollText size={16} /> Journal
-                </button>
-                <button 
-                    onClick={() => setActiveTab('COA')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'COA' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                    <Landmark size={16} /> COA
-                </button>
+                <button onClick={() => setActiveTab('OVERVIEW')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'OVERVIEW' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}><PieChart size={16} /> Overview</button>
+                <button onClick={() => setActiveTab('GL')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'GL' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}><BookOpen size={16} /> Ledger</button>
+                <button onClick={() => setActiveTab('JOURNAL')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'JOURNAL' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}><ScrollText size={16} /> Journal</button>
+                <button onClick={() => setActiveTab('COA')} className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'COA' ? 'bg-slate-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}><Landmark size={16} /> COA</button>
             </div>
         </div>
       </header>
@@ -202,12 +168,9 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
       {/* --- OVERVIEW TAB --- */}
       {activeTab === 'OVERVIEW' && (
           <div className="space-y-6 animate-in fade-in">
-              {/* Report Context Banner */}
               <div className={`p-3 rounded-lg border text-sm flex items-center gap-2 ${reportScope === 'CONSOLIDATED' ? 'bg-indigo-50 border-indigo-100 text-indigo-800' : 'bg-white border-gray-200 text-gray-600'}`}>
                   <Filter size={16}/> 
                   Viewing <strong>{reportScope === 'CONSOLIDATED' ? 'All Entities' : currentBranch.name}</strong> Financial Position.
-                  {reportScope === 'BRANCH' && <span className="text-xs text-gray-400 ml-auto">Derived from Branch Journal Entries</span>}
-                  {reportScope === 'CONSOLIDATED' && <span className="text-xs text-indigo-400 ml-auto">Aggregated Tenant Balances</span>}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -247,10 +210,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                             <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#64748b'}} />
                             <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b'}} />
-                            <RechartsTooltip 
-                                cursor={{fill: '#f8fafc'}}
-                                contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                            />
+                            <RechartsTooltip cursor={{fill: '#f8fafc'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
                             <Bar dataKey="revenue" name="Revenue" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={30} />
                             <Bar dataKey="expenses" name="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={30} />
                         </BarChart>
@@ -260,16 +220,15 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
           </div>
       )}
 
-      {/* --- CHART OF ACCOUNTS TAB (Tenant Level) --- */}
+      {/* --- CHART OF ACCOUNTS TAB --- */}
       {activeTab === 'COA' && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col animate-in fade-in">
               <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                   <div className="flex items-center gap-2">
                       <Building2 size={18} className="text-indigo-600"/>
                       <h3 className="font-bold text-gray-700">Master Chart of Accounts</h3>
-                      <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">Tenant Level</span>
+                      <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">Derived Balances</span>
                   </div>
-                  <button className="text-sm text-blue-600 hover:underline">Download Master Structure</button>
               </div>
               <div className="overflow-auto flex-1">
                   <table className="w-full text-left text-sm">
@@ -287,20 +246,9 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                               <tr key={account.id} className="hover:bg-gray-50">
                                   <td className="p-4 font-mono text-gray-500">{account.code}</td>
                                   <td className="p-4 font-medium text-gray-900">{account.name}</td>
-                                  <td className="p-4">
-                                      <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                          account.type === 'ASSET' ? 'bg-green-100 text-green-700' :
-                                          account.type === 'LIABILITY' ? 'bg-red-100 text-red-700' :
-                                          account.type === 'INCOME' ? 'bg-blue-100 text-blue-700' :
-                                          'bg-gray-100 text-gray-700'
-                                      }`}>
-                                          {account.type}
-                                      </span>
-                                  </td>
+                                  <td className="p-4"><span className={`px-2 py-1 rounded text-xs font-bold ${account.type === 'ASSET' ? 'bg-green-100 text-green-700' : account.type === 'LIABILITY' ? 'bg-red-100 text-red-700' : account.type === 'INCOME' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'}`}>{account.type}</span></td>
                                   <td className="p-4 text-gray-500">{account.subtype}</td>
-                                  <td className="p-4 text-right font-bold font-mono">
-                                      {account.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                  </td>
+                                  <td className="p-4 text-right font-bold font-mono">{account.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                               </tr>
                           ))}
                       </tbody>
@@ -318,12 +266,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                       {reportScope === 'BRANCH' && <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">Filtered: {currentBranch.name}</span>}
                   </div>
                   {activeTab === 'JOURNAL' && (
-                      <button 
-                        onClick={() => setShowJournalModal(true)}
-                        className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-slate-800"
-                      >
-                          <Plus size={16} /> New Entry
-                      </button>
+                      <button onClick={() => setShowJournalModal(true)} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-slate-800"><Plus size={16} /> New Entry</button>
                   )}
               </div>
               
@@ -337,27 +280,18 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                                       <span className="text-gray-600 font-medium">{entry.description}</span>
                                       <span className="text-xs text-gray-400 ml-2">#{entry.id}</span>
                                   </div>
-                                  <span className={`text-xs border px-2 py-1 rounded ${entry.branchId === currentBranch.id ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 text-gray-500'}`}>
-                                      {entry.branchId}
-                                  </span>
+                                  <span className={`text-xs border px-2 py-1 rounded ${entry.branchId === currentBranch.id ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 text-gray-500'}`}>{entry.branchId}</span>
                               </div>
                               <table className="w-full text-sm">
                                   <thead>
-                                      <tr className="text-xs text-gray-400 border-b border-gray-100">
-                                          <th className="p-2 text-left w-1/2">Account</th>
-                                          <th className="p-2 text-right">Debit</th>
-                                          <th className="p-2 text-right">Credit</th>
-                                      </tr>
+                                      <tr className="text-xs text-gray-400 border-b border-gray-100"><th className="p-2 text-left w-1/2">Account</th><th className="p-2 text-right">Debit</th><th className="p-2 text-right">Credit</th></tr>
                                   </thead>
                                   <tbody>
                                       {entry.lines.map((line, idx) => {
                                           const account = chartOfAccounts.find(a => a.id === line.accountId);
                                           return (
                                               <tr key={idx} className="hover:bg-slate-50">
-                                                  <td className="p-2 pl-4">
-                                                      <span className="font-medium text-gray-700">{account?.name || line.accountId}</span>
-                                                      <span className="text-xs text-gray-400 ml-2 font-mono">{account?.code}</span>
-                                                  </td>
+                                                  <td className="p-2 pl-4"><span className="font-medium text-gray-700">{account?.name || line.accountId}</span><span className="text-xs text-gray-400 ml-2 font-mono">{account?.code}</span></td>
                                                   <td className="p-2 text-right font-mono">{line.debit > 0 ? line.debit.toLocaleString() : '-'}</td>
                                                   <td className="p-2 text-right font-mono">{line.credit > 0 ? line.credit.toLocaleString() : '-'}</td>
                                               </tr>
@@ -368,10 +302,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                           </div>
                       ))
                   ) : (
-                      <div className="text-center py-12 text-gray-400">
-                          <ScrollText size={48} className="mx-auto mb-2 opacity-20"/>
-                          <p>No journal entries found for this view scope.</p>
-                      </div>
+                      <div className="text-center py-12 text-gray-400"><ScrollText size={48} className="mx-auto mb-2 opacity-20"/><p>No journal entries found for this view scope.</p></div>
                   )}
               </div>
           </div>
@@ -385,88 +316,48 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({ currentBranch, chartOfA
                       <h3 className="font-bold text-xl text-gray-800">New Manual Journal Entry</h3>
                       <button onClick={() => setShowJournalModal(false)}><X size={24} className="text-gray-400" /></button>
                   </div>
-                  
                   <div className="p-6 overflow-y-auto space-y-4">
                       <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-2 rounded-lg text-sm border border-blue-100">
-                          <MapPin size={16}/>
-                          Posting to Branch: <strong>{currentBranch.name}</strong> (Branch-Level Entry)
+                          <MapPin size={16}/> Posting to Branch: <strong>{currentBranch.name}</strong> (Branch-Level Entry)
                       </div>
-
                       <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">Description / Memo</label>
-                          <input 
-                              type="text" 
-                              className="w-full border rounded-lg p-2.5" 
-                              placeholder="e.g. Depreciation of Equipment"
-                              value={newJournalEntry.description}
-                              onChange={(e) => setNewJournalEntry({...newJournalEntry, description: e.target.value})}
-                          />
+                          <input type="text" className="w-full border rounded-lg p-2.5" placeholder="e.g. Depreciation of Equipment" value={newJournalEntry.description} onChange={(e) => setNewJournalEntry({...newJournalEntry, description: e.target.value})} />
                       </div>
-
                       <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden">
                           <table className="w-full text-sm">
                               <thead className="bg-gray-100 text-gray-600 font-bold">
-                                  <tr>
-                                      <th className="p-3 text-left">Account</th>
-                                      <th className="p-3 text-right w-32">Debit</th>
-                                      <th className="p-3 text-right w-32">Credit</th>
-                                  </tr>
+                                  <tr><th className="p-3 text-left">Account</th><th className="p-3 text-right w-32">Debit</th><th className="p-3 text-right w-32">Credit</th></tr>
                               </thead>
                               <tbody>
                                   {newJournalEntry.lines.map((line, idx) => (
                                       <tr key={idx} className="border-b border-gray-100 last:border-0">
                                           <td className="p-2">
-                                              <select 
-                                                  className="w-full border-none bg-transparent focus:ring-0"
-                                                  value={line.accountId}
-                                                  onChange={(e) => updateJournalLine(idx, 'accountId', e.target.value)}
-                                              >
+                                              <select className="w-full border-none bg-transparent focus:ring-0" value={line.accountId} onChange={(e) => updateJournalLine(idx, 'accountId', e.target.value)}>
                                                   <option value="">Select Account</option>
-                                                  {chartOfAccounts.map(acc => (
-                                                      <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>
-                                                  ))}
+                                                  {chartOfAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>)}
                                               </select>
                                           </td>
-                                          <td className="p-2">
-                                              <input 
-                                                  type="number" 
-                                                  className="w-full text-right border rounded p-1" 
-                                                  value={line.debit}
-                                                  onChange={(e) => updateJournalLine(idx, 'debit', parseFloat(e.target.value) || 0)}
-                                                  disabled={line.credit > 0}
-                                              />
-                                          </td>
-                                          <td className="p-2">
-                                              <input 
-                                                  type="number" 
-                                                  className="w-full text-right border rounded p-1" 
-                                                  value={line.credit}
-                                                  onChange={(e) => updateJournalLine(idx, 'credit', parseFloat(e.target.value) || 0)}
-                                                  disabled={line.debit > 0}
-                                              />
-                                          </td>
+                                          <td className="p-2"><input type="number" className="w-full text-right border rounded p-1" value={line.debit} onChange={(e) => updateJournalLine(idx, 'debit', parseFloat(e.target.value) || 0)} disabled={line.credit > 0}/></td>
+                                          <td className="p-2"><input type="number" className="w-full text-right border rounded p-1" value={line.credit} onChange={(e) => updateJournalLine(idx, 'credit', parseFloat(e.target.value) || 0)} disabled={line.debit > 0}/></td>
                                       </tr>
                                   ))}
                               </tbody>
                           </table>
-                          <button onClick={addJournalLine} className="w-full py-2 text-center text-blue-600 hover:bg-blue-50 text-sm font-medium border-t border-gray-200">
-                              + Add Line
-                          </button>
+                          <button onClick={addJournalLine} className="w-full py-2 text-center text-blue-600 hover:bg-blue-50 text-sm font-medium border-t border-gray-200">+ Add Line</button>
                       </div>
-
                       <div className="flex justify-between items-center text-sm font-bold p-2 bg-blue-50 rounded-lg">
                           <span>Totals</span>
                           <div className="flex gap-8 mr-4">
-                              <span className={newJournalEntry.lines.reduce((s,l) => s + l.debit, 0) !== newJournalEntry.lines.reduce((s,l) => s + l.credit, 0) ? 'text-red-600' : 'text-green-600'}>
+                              <span className={Math.abs(newJournalEntry.lines.reduce((s,l) => s + l.debit, 0) - newJournalEntry.lines.reduce((s,l) => s + l.credit, 0)) > 0.01 ? 'text-red-600' : 'text-green-600'}>
                                   DR: {newJournalEntry.lines.reduce((s,l) => s + l.debit, 0).toLocaleString()}
                               </span>
-                              <span className={newJournalEntry.lines.reduce((s,l) => s + l.debit, 0) !== newJournalEntry.lines.reduce((s,l) => s + l.credit, 0) ? 'text-red-600' : 'text-green-600'}>
+                              <span className={Math.abs(newJournalEntry.lines.reduce((s,l) => s + l.debit, 0) - newJournalEntry.lines.reduce((s,l) => s + l.credit, 0)) > 0.01 ? 'text-red-600' : 'text-green-600'}>
                                   CR: {newJournalEntry.lines.reduce((s,l) => s + l.credit, 0).toLocaleString()}
                               </span>
                           </div>
                       </div>
                   </div>
-
                   <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
                       <button onClick={() => setShowJournalModal(false)} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600">Cancel</button>
                       <button onClick={handlePostJournal} className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700">Post Entry</button>

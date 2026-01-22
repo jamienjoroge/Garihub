@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Search, Car, History, FileText, PenTool, Shield, User, Fuel, GitCommit, Database, Plus, X, FolderOpen, Link as LinkIcon, CheckCircle, Lock } from 'lucide-react';
-import { Vehicle, JobCard, Inspection, ServiceRecord } from '../types';
+import { Search, Car, History, FileText, PenTool, Shield, User, Fuel, GitCommit, Database, Plus, X, FolderOpen, Link as LinkIcon, CheckCircle, Lock, AlertOctagon, UserPlus, AlertCircle, Edit3 } from 'lucide-react';
+import { Vehicle, JobCard, Inspection, ServiceRecord, LedgerEventType } from '../types';
 
 interface VehicleRegistryProps {
     vehicles: Vehicle[];
@@ -8,13 +8,25 @@ interface VehicleRegistryProps {
     jobs?: JobCard[];
     inspections?: Inspection[];
     serviceRecords?: ServiceRecord[];
+    onCorrection?: (originalRecord: ServiceRecord, newMileage: number, reason: string) => void;
+    onTransfer?: (vehicleId: string, newOwnerName: string, notes: string) => void;
 }
 
-const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles, jobs = [], inspections = [], serviceRecords = [] }) => {
+const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ 
+    vehicles, setVehicles, jobs = [], inspections = [], serviceRecords = [], 
+    onCorrection, onTransfer 
+}) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [verifyingHash, setVerifyingHash] = useState<string | null>(null); // Ledger verification animation state
+
+  // Workflows
+  const [correctionTarget, setCorrectionTarget] = useState<ServiceRecord | null>(null);
+  const [correctionForm, setCorrectionForm] = useState({ mileage: '', reason: '' });
+  
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferForm, setTransferForm] = useState({ newOwner: '', notes: '' });
 
   const [newVehicle, setNewVehicle] = useState<Partial<Vehicle>>({
     plateNumber: '', make: '', model: '', year: new Date().getFullYear(), vin: '', ownerName: '', color: '', fuelType: 'PETROL', transmission: 'AUTOMATIC', engineSize: ''
@@ -51,6 +63,42 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
       setIsAddModalOpen(false);
       setNewVehicle({ plateNumber: '', make: '', model: '', year: new Date().getFullYear(), vin: '', ownerName: '', color: '', fuelType: 'PETROL', transmission: 'AUTOMATIC', engineSize: '' });
     }
+  };
+
+  const submitCorrection = () => {
+      if(onCorrection && correctionTarget && correctionForm.reason) {
+          onCorrection(correctionTarget, parseInt(correctionForm.mileage) || correctionTarget.mileage, correctionForm.reason);
+          setCorrectionTarget(null);
+          setCorrectionForm({ mileage: '', reason: '' });
+      }
+  };
+
+  const submitTransfer = () => {
+      if(onTransfer && selectedVehicle && transferForm.newOwner) {
+          onTransfer(selectedVehicle.id, transferForm.newOwner, transferForm.notes);
+          setIsTransferModalOpen(false);
+          setTransferForm({ newOwner: '', notes: '' });
+          // Update local view immediately for better UX, though App state propagates down
+          if(selectedVehicle) setSelectedVehicle({...selectedVehicle, ownerName: transferForm.newOwner});
+      }
+  };
+
+  const renderEventIcon = (type: LedgerEventType) => {
+      switch(type) {
+          case 'SERVICE_RECORD': return <FileText size={16}/>;
+          case 'CORRECTION_ISSUED': return <AlertOctagon size={16}/>;
+          case 'OWNERSHIP_TRANSFERRED': return <UserPlus size={16}/>;
+          default: return <FileText size={16}/>;
+      }
+  };
+
+  const renderEventColor = (type: LedgerEventType) => {
+      switch(type) {
+          case 'SERVICE_RECORD': return 'bg-slate-800 text-white';
+          case 'CORRECTION_ISSUED': return 'bg-red-500 text-white';
+          case 'OWNERSHIP_TRANSFERRED': return 'bg-blue-500 text-white';
+          default: return 'bg-slate-800 text-white';
+      }
   };
 
   return (
@@ -108,9 +156,15 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
                                         </span>
                                         <span className="text-xs text-gray-400 font-mono">VIN: {selectedVehicle.vin}</span>
                                     </div>
+                                    <p className="text-xs text-slate-500 mt-1">Current Owner: <strong>{selectedVehicle.ownerName}</strong></p>
                                 </div>
                             </div>
-                            <button className="bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-700">Edit Specs</button>
+                            <div className="flex gap-2">
+                                <button onClick={() => setIsTransferModalOpen(true)} className="bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-700 flex items-center gap-2">
+                                    <UserPlus size={16}/> Transfer Ownership
+                                </button>
+                                <button className="bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-700">Edit Specs</button>
+                            </div>
                         </div>
                     </div>
 
@@ -143,46 +197,74 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
                                     <div key={record.id} className="relative group">
                                         <div className={`absolute -left-[41px] p-2 rounded-full border-2 border-white shadow-md z-10 transition-colors ${
                                             verifyingHash === 'START' ? 'bg-yellow-400 animate-pulse' : 
-                                            verifyingHash === 'DONE' ? 'bg-green-500 text-white' : 'bg-slate-800 text-white'
+                                            verifyingHash === 'DONE' ? 'bg-green-500 text-white' : renderEventColor(record.eventType)
                                         }`}>
-                                            <FileText size={16} />
+                                            {renderEventIcon(record.eventType)}
                                         </div>
                                         
                                         {/* Ledger Block */}
-                                        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all hover:border-blue-300">
+                                        <div className={`p-5 rounded-xl border shadow-sm hover:shadow-md transition-all hover:border-blue-300 ${
+                                            record.eventType === 'CORRECTION_ISSUED' ? 'bg-red-50 border-red-200' :
+                                            record.eventType === 'OWNERSHIP_TRANSFERRED' ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'
+                                        }`}>
                                             <div className="flex justify-between items-start mb-3 pb-3 border-b border-gray-100">
                                                 <div>
-                                                    <h4 className="font-bold text-gray-900 text-lg">{record.description}</h4>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <h4 className="font-bold text-gray-900 text-lg">{record.description}</h4>
+                                                        {record.eventType === 'CORRECTION_ISSUED' && <span className="bg-red-100 text-red-700 text-[10px] px-2 py-0.5 rounded uppercase font-bold">Correction</span>}
+                                                    </div>
                                                     <p className="text-sm text-gray-500 font-medium">{record.garageName}</p>
                                                 </div>
                                                 <div className="text-right">
                                                     <span className="block text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-600 mb-1">
                                                         {new Date(record.timestamp).toLocaleDateString()}
                                                     </span>
-                                                    <span className="text-xs font-bold text-blue-600">
-                                                        {record.mileage.toLocaleString()} km
-                                                    </span>
+                                                    {record.mileage > 0 && <span className="text-xs font-bold text-blue-600">{record.mileage.toLocaleString()} km</span>}
                                                 </div>
                                             </div>
                                             
                                             <div className="text-sm text-gray-700 mb-4">
-                                                <div className="flex flex-wrap gap-2">
-                                                    {record.items.map((item, i) => (
-                                                        <span key={i} className="bg-slate-50 px-2 py-1 rounded text-xs border border-slate-100">{item}</span>
-                                                    ))}
-                                                </div>
+                                                {record.eventType === 'SERVICE_RECORD' && (
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {record.items.map((item, i) => (
+                                                            <span key={i} className="bg-slate-50 px-2 py-1 rounded text-xs border border-slate-100">{item}</span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {record.eventType === 'CORRECTION_ISSUED' && (
+                                                    <p className="text-red-700 text-xs italic">
+                                                        Correction issued for Record ID: {record.referenceRecordId}. Reason: {record.metadata?.correctionReason}
+                                                    </p>
+                                                )}
+                                                {record.eventType === 'OWNERSHIP_TRANSFERRED' && (
+                                                    <p className="text-blue-700 text-xs italic">
+                                                        Transferred to: {record.metadata?.newOwner}. Notes: {record.metadata?.transferNotes}
+                                                    </p>
+                                                )}
                                             </div>
 
-                                            {/* Cryptographic Proof */}
-                                            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 font-mono text-[10px] text-slate-500">
-                                                <div className="flex justify-between mb-1">
-                                                    <span>Hash:</span>
-                                                    <span className="text-blue-600 truncate max-w-[200px]" title={record.hash}>{record.hash}</span>
+                                            {/* Cryptographic Proof & Actions */}
+                                            <div className="flex justify-between items-end">
+                                                <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50 font-mono text-[10px] text-slate-500 flex-1 mr-4">
+                                                    <div className="flex justify-between mb-1">
+                                                        <span>Hash:</span>
+                                                        <span className="text-blue-600 truncate max-w-[150px]" title={record.hash}>{record.hash}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span>Prev:</span>
+                                                        <span className="text-slate-400 truncate max-w-[150px]" title={record.previousHash}>{record.previousHash}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="flex justify-between">
-                                                    <span>Prev:</span>
-                                                    <span className="text-slate-400 truncate max-w-[200px]" title={record.previousHash}>{record.previousHash}</span>
-                                                </div>
+                                                
+                                                {record.eventType === 'SERVICE_RECORD' && (
+                                                    <button 
+                                                        onClick={() => { setCorrectionTarget(record); setCorrectionForm({ mileage: record.mileage.toString(), reason: '' }); }}
+                                                        className="text-xs flex items-center gap-1 text-gray-400 hover:text-red-600 transition-colors px-2 py-1 rounded hover:bg-red-50"
+                                                        title="Issue Correction"
+                                                    >
+                                                        <Edit3 size={14}/> Correct
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                         
@@ -221,6 +303,60 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
                 <button onClick={handleAddVehicle} className="w-full bg-blue-600 text-white p-2 rounded">Save</button>
             </div>
          </div>
+       )}
+
+       {/* Correction Modal */}
+       {correctionTarget && (
+           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+               <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+                   <div className="flex items-start gap-4 mb-4">
+                       <div className="bg-red-100 p-2 rounded-full text-red-600"><AlertCircle size={24}/></div>
+                       <div>
+                           <h3 className="font-bold text-xl text-gray-900">Issue Record Correction</h3>
+                           <p className="text-xs text-gray-500">This will append a new correction block. The original record remains in history.</p>
+                       </div>
+                   </div>
+                   <div className="space-y-4">
+                       <div>
+                           <label className="block text-sm font-medium text-gray-700 mb-1">Corrected Mileage</label>
+                           <input type="number" className="w-full border rounded-lg p-2" value={correctionForm.mileage} onChange={e => setCorrectionForm({...correctionForm, mileage: e.target.value})} />
+                       </div>
+                       <div>
+                           <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Correction</label>
+                           <textarea className="w-full border rounded-lg p-2" rows={3} value={correctionForm.reason} onChange={e => setCorrectionForm({...correctionForm, reason: e.target.value})} placeholder="e.g. Typo in original entry" />
+                       </div>
+                       <button onClick={submitCorrection} className="w-full bg-red-600 text-white py-2 rounded-lg font-bold hover:bg-red-700">Issue Correction Block</button>
+                       <button onClick={() => setCorrectionTarget(null)} className="w-full text-gray-500 py-2">Cancel</button>
+                   </div>
+               </div>
+           </div>
+       )}
+
+       {/* Transfer Modal */}
+       {isTransferModalOpen && (
+           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+               <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+                   <div className="flex items-start gap-4 mb-4">
+                       <div className="bg-blue-100 p-2 rounded-full text-blue-600"><UserPlus size={24}/></div>
+                       <div>
+                           <h3 className="font-bold text-xl text-gray-900">Transfer Ownership</h3>
+                           <p className="text-xs text-gray-500">This updates the current owner and logs a permanent transfer event.</p>
+                       </div>
+                   </div>
+                   <div className="space-y-4">
+                       <div>
+                           <label className="block text-sm font-medium text-gray-700 mb-1">New Owner Name</label>
+                           <input type="text" className="w-full border rounded-lg p-2" value={transferForm.newOwner} onChange={e => setTransferForm({...transferForm, newOwner: e.target.value})} placeholder="Full Legal Name"/>
+                       </div>
+                       <div>
+                           <label className="block text-sm font-medium text-gray-700 mb-1">Transfer Notes</label>
+                           <textarea className="w-full border rounded-lg p-2" rows={3} value={transferForm.notes} onChange={e => setTransferForm({...transferForm, notes: e.target.value})} placeholder="e.g. Sold via dealership"/>
+                       </div>
+                       <button onClick={submitTransfer} className="w-full bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700">Confirm Transfer</button>
+                       <button onClick={() => setIsTransferModalOpen(false)} className="w-full text-gray-500 py-2">Cancel</button>
+                   </div>
+               </div>
+           </div>
        )}
     </div>
   );
