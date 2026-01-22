@@ -285,17 +285,17 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ branches = [], setBra
                   </label>
               </div>
 
-              {tenantSettings.tax.enabled && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">KRA PIN Number</label>
-                      <input 
-                        type="text" 
-                        value={tenantSettings.tax.pin}
-                        onChange={(e) => setTenantSettings({...tenantSettings, tax: {...tenantSettings.tax, pin: e.target.value}})}
-                        className="w-full border rounded-lg p-2.5 uppercase font-mono" 
-                      />
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">KRA PIN Number</label>
+                  <input 
+                    type="text" 
+                    value={tenantSettings.tax.pin}
+                    onChange={(e) => setTenantSettings({...tenantSettings, tax: {...tenantSettings.tax, pin: e.target.value}})}
+                    className="w-full border rounded-lg p-2.5 uppercase font-mono" 
+                  />
+                </div>
+                {tenantSettings.tax.enabled && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">VAT Rate (%)</label>
                       <input 
@@ -305,8 +305,43 @@ const SettingsManager: React.FC<SettingsManagerProps> = ({ branches = [], setBra
                         className="w-full border rounded-lg p-2.5" 
                       />
                     </div>
+                )}
+              </div>
+
+              {/* Invoice Numbering Config */}
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 mt-4">
+                  <h4 className="font-bold text-gray-700 mb-3 text-sm uppercase flex items-center gap-2">
+                      <FileKey size={16}/> Invoice Numbering (KRA Friendly)
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Prefix</label>
+                          <input 
+                              type="text" 
+                              value={tenantSettings.invoiceConfig.prefix}
+                              onChange={(e) => setTenantSettings({
+                                  ...tenantSettings, 
+                                  invoiceConfig: { ...tenantSettings.invoiceConfig, prefix: e.target.value }
+                              })}
+                              className="w-full border rounded-lg p-2.5"
+                              placeholder="e.g. INV-2024-"
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Next Sequence Number</label>
+                          <input 
+                              type="number" 
+                              value={tenantSettings.invoiceConfig.sequence}
+                              onChange={(e) => setTenantSettings({
+                                  ...tenantSettings, 
+                                  invoiceConfig: { ...tenantSettings.invoiceConfig, sequence: parseInt(e.target.value) }
+                              })}
+                              className="w-full border rounded-lg p-2.5"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">This will be the ID of the next invoice generated.</p>
+                      </div>
                   </div>
-              )}
+              </div>
             </div>
           )}
 

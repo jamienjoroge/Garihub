@@ -13,7 +13,7 @@ import HRManager from './views/HRManager';
 import SettingsManager from './views/SettingsManager';
 import ProjectManager from './views/ProjectManager';
 import AssetManager from './views/AssetManager';
-import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment, Employee, TenantSettings, Inspection, StockMovement } from './types';
+import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment, Employee, TenantSettings, Inspection, StockMovement, ServiceRecord } from './types';
 import { ShieldAlert } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -35,7 +35,11 @@ const App: React.FC = () => {
       branding: {
           logoUrl: ''
       },
-      invoiceTerms: 'All goods remain property of GariHub until paid in full.'
+      invoiceTerms: 'All goods remain property of GariHub until paid in full.',
+      invoiceConfig: {
+          prefix: 'INV-2024-',
+          sequence: 1001
+      }
   });
 
   // --- BRANCH MANAGEMENT ---
@@ -348,7 +352,67 @@ const App: React.FC = () => {
     }
   ]);
 
+  // 6. Service Ledger (Immutable History)
+  const [serviceRecords, setServiceRecords] = useState<ServiceRecord[]>([
+      {
+          id: 'REC-GENESIS-V1',
+          vehicleId: 'V1',
+          date: '2023-09-01',
+          garageName: 'GariHub HQ',
+          garageId: 'BR-HQ',
+          description: 'Initial Registration Service',
+          mileage: 85000,
+          cost: 15000,
+          items: ['Oil', 'Filter'],
+          hash: '000008d234a9...',
+          previousHash: '000000000000...',
+          timestamp: '2023-09-01T10:00:00Z',
+          recordedBy: 'EMP-001',
+          isVerified: true
+      }
+  ]);
+
   // --- INTEGRATION HANDLERS ---
+
+  const handleMintServiceRecord = (job: JobCard, mileage: number) => {
+      // 1. Get Chain
+      const vehicleRecords = serviceRecords
+          .filter(r => r.vehicleId === job.vehicle.id)
+          .sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      
+      const prevHash = vehicleRecords.length > 0 ? vehicleRecords[0].hash : 'GENESIS';
+
+      // 2. Generate Hash (Mock SHA-256 simulation)
+      const rawData = `${job.id}|${job.vehicle.vin}|${job.entryDate}|${mileage}|${prevHash}`;
+      // Simple hash for demo
+      let hash = 0;
+      for (let i = 0; i < rawData.length; i++) {
+          const char = rawData.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash |= 0; 
+      }
+      const finalHash = '0x' + Math.abs(hash).toString(16) + Date.now().toString(16).slice(-4);
+
+      // 3. Create Record
+      const record: ServiceRecord = {
+          id: `REC-${Date.now()}`,
+          vehicleId: job.vehicle.id,
+          date: new Date().toISOString().split('T')[0],
+          garageName: tenantSettings.name,
+          garageId: job.branchId,
+          description: job.issueDescription,
+          mileage: mileage,
+          cost: job.finalCost || job.estimatedCost,
+          items: job.partsUsed?.map(p => p.name) || [],
+          hash: finalHash,
+          previousHash: prevHash,
+          timestamp: new Date().toISOString(),
+          recordedBy: job.technicianId || 'SYSTEM',
+          isVerified: true
+      };
+
+      setServiceRecords([record, ...serviceRecords]);
+  };
 
   const handleBookAppointment = (apt: Appointment, vehicleDetails?: { make: string, model: string }) => {
       const cleanPlate = apt.vehiclePlate.toUpperCase();
@@ -629,6 +693,15 @@ const App: React.FC = () => {
           return acc;
       });
       setChartOfAccounts(updatedAccounts);
+
+      // INCREMENT INVOICE SEQUENCE
+      setTenantSettings(prev => ({
+          ...prev,
+          invoiceConfig: {
+              ...prev.invoiceConfig,
+              sequence: prev.invoiceConfig.sequence + 1
+          }
+      }));
   };
 
   // 2. Payment Received: DR Bank, CR Accounts Receivable
@@ -715,6 +788,7 @@ const App: React.FC = () => {
             setVehicles={setVehicles}
             jobs={jobs}
             inspections={inspections}
+            serviceRecords={serviceRecords}
         />;
       case 'JOBS':
         return <JobCardManager 
@@ -741,6 +815,7 @@ const App: React.FC = () => {
             setChartOfAccounts={setChartOfAccounts}
             journalEntries={journalEntries}
             setJournalEntries={setJournalEntries}
+            onMintRecord={handleMintServiceRecord}
         />;
       case 'PROJECTS':
         return <ProjectManager 

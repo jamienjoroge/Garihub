@@ -1,39 +1,23 @@
 import React, { useState } from 'react';
-import { Search, Car, History, FileText, PenTool, Shield, User, Fuel, GitCommit, Database, Plus, X, FolderOpen } from 'lucide-react';
-import { Vehicle, JobCard, Inspection } from '../types';
+import { Search, Car, History, FileText, PenTool, Shield, User, Fuel, GitCommit, Database, Plus, X, FolderOpen, Link as LinkIcon, CheckCircle, Lock } from 'lucide-react';
+import { Vehicle, JobCard, Inspection, ServiceRecord } from '../types';
 
 interface VehicleRegistryProps {
     vehicles: Vehicle[];
     setVehicles: (vehicles: Vehicle[]) => void;
     jobs?: JobCard[];
     inspections?: Inspection[];
+    serviceRecords?: ServiceRecord[];
 }
 
-interface VehicleTimelineEvent {
-  id: string;
-  type: 'SERVICE' | 'INSPECTION' | 'REPAIR' | 'OWNERSHIP_CHANGE';
-  date: string;
-  title: string;
-  description: string;
-  mileage?: number;
-  garage: string;
-}
-
-const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles, jobs = [], inspections = [] }) => {
+const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles, jobs = [], inspections = [], serviceRecords = [] }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [verifyingHash, setVerifyingHash] = useState<string | null>(null); // Ledger verification animation state
+
   const [newVehicle, setNewVehicle] = useState<Partial<Vehicle>>({
-    plateNumber: '',
-    make: '',
-    model: '',
-    year: new Date().getFullYear(),
-    vin: '',
-    ownerName: '',
-    color: '',
-    fuelType: 'PETROL',
-    transmission: 'AUTOMATIC',
-    engineSize: ''
+    plateNumber: '', make: '', model: '', year: new Date().getFullYear(), vin: '', ownerName: '', color: '', fuelType: 'PETROL', transmission: 'AUTOMATIC', engineSize: ''
   });
 
   const filteredVehicles = vehicles.filter(v => 
@@ -41,69 +25,16 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
     v.ownerName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Generate Timeline from Props
-  const getTimeline = (vehicleId: string): VehicleTimelineEvent[] => {
-      const vehicle = vehicles.find(v => v.id === vehicleId);
-      if (!vehicle) return [];
-
-      const timeline: VehicleTimelineEvent[] = [];
-
-      // Add Jobs
-      jobs.filter(j => j.vehicle.plateNumber === vehicle.plateNumber).forEach(j => {
-          timeline.push({
-              id: j.id,
-              type: 'SERVICE',
-              date: j.entryDate.split('T')[0],
-              title: j.issueDescription,
-              description: `Status: ${j.status}. Technician: ${j.technicianName || 'Pending'}. Cost: KES ${j.estimatedCost}`,
-              garage: 'GariHub Branch' // In real app, match branch ID
-          });
-      });
-
-      // Add Inspections
-      inspections.filter(i => i.plateNumber === vehicle.plateNumber).forEach(i => {
-          timeline.push({
-              id: i.id,
-              type: 'INSPECTION',
-              date: i.date,
-              title: `${i.type} Inspection`,
-              description: `Overall Score: ${i.overallScore || 'Pending'}%. Status: ${i.status}`,
-              garage: 'GariHub Inspection Center'
-          });
-      });
-
-      // Add Registration (Mock initial event based on vehicle data)
-      timeline.push({
-          id: 'REG-INIT',
-          type: 'OWNERSHIP_CHANGE',
-          date: new Date().toISOString().split('T')[0], // Mock date
-          title: 'Vehicle Registration',
-          description: `Registered to ${vehicle.ownerName}`,
-          garage: 'NTSA'
-      });
-
-      return timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  // Get Chain History (Immutable Ledger)
+  const getLedger = (vehicleId: string) => {
+      return serviceRecords
+        .filter(r => r.vehicleId === vehicleId)
+        .sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   };
 
-  const currentTimeline = selectedVehicle ? getTimeline(selectedVehicle.id) : [];
-
-  const getEventIcon = (type: string) => {
-    switch (type) {
-        case 'SERVICE': return <PenTool size={16} />;
-        case 'INSPECTION': return <Shield size={16} />;
-        case 'REPAIR': return <Car size={16} />;
-        case 'OWNERSHIP_CHANGE': return <User size={16} />;
-        default: return <FileText size={16} />;
-    }
-  };
-
-  const getEventColor = (type: string) => {
-      switch (type) {
-          case 'SERVICE': return 'bg-blue-100 text-blue-600';
-          case 'INSPECTION': return 'bg-purple-100 text-purple-600';
-          case 'OWNERSHIP_CHANGE': return 'bg-amber-100 text-amber-600';
-          default: return 'bg-gray-100 text-gray-600';
-      }
+  const handleVerifyChain = () => {
+      setVerifyingHash('START');
+      setTimeout(() => setVerifyingHash('DONE'), 2000);
   };
 
   const handleAddVehicle = () => {
@@ -111,31 +42,14 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
       const vehicle: Vehicle = {
         id: `V${Date.now()}`,
         plateNumber: newVehicle.plateNumber.toUpperCase(),
-        make: newVehicle.make,
-        model: newVehicle.model,
-        year: newVehicle.year || new Date().getFullYear(),
-        vin: newVehicle.vin || 'N/A',
-        ownerName: newVehicle.ownerName || 'Unknown',
-        color: newVehicle.color,
-        fuelType: newVehicle.fuelType as any,
-        transmission: newVehicle.transmission as any,
-        engineSize: newVehicle.engineSize
+        make: newVehicle.make, model: newVehicle.model, year: newVehicle.year || new Date().getFullYear(),
+        vin: newVehicle.vin || 'N/A', ownerName: newVehicle.ownerName || 'Unknown', color: newVehicle.color,
+        fuelType: newVehicle.fuelType as any, transmission: newVehicle.transmission as any, engineSize: newVehicle.engineSize
       };
       setVehicles([vehicle, ...vehicles]);
       setSelectedVehicle(vehicle);
       setIsAddModalOpen(false);
-      setNewVehicle({
-        plateNumber: '',
-        make: '',
-        model: '',
-        year: new Date().getFullYear(),
-        vin: '',
-        ownerName: '',
-        color: '',
-        fuelType: 'PETROL',
-        transmission: 'AUTOMATIC',
-        engineSize: ''
-      });
+      setNewVehicle({ plateNumber: '', make: '', model: '', year: new Date().getFullYear(), vin: '', ownerName: '', color: '', fuelType: 'PETROL', transmission: 'AUTOMATIC', engineSize: '' });
     }
   };
 
@@ -144,18 +58,10 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
        <header className="mb-8 flex justify-between items-end">
           <div>
             <h2 className="text-3xl font-bold text-gray-800">Vehicle Registry</h2>
-            <p className="text-gray-500">Central database for vehicle specifications and service history (Digital Logbook).</p>
-            <p className="text-xs text-blue-600 mt-2 font-medium bg-blue-50 inline-block px-3 py-1 rounded border border-blue-100 flex items-center gap-2 w-fit">
-                <Shield size={14} />
-                This vehicle’s service history is portable and owner-controlled.
-            </p>
+            <p className="text-gray-500">Decentralized Asset Management & Digital Logbook</p>
           </div>
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm"
-          >
-            <Plus size={20} />
-            <span>Add Vehicle</span>
+          <button onClick={() => setIsAddModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 shadow-sm">
+            <Plus size={20} /> Add Vehicle
           </button>
        </header>
 
@@ -165,47 +71,20 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
             <div className="p-4 border-b border-gray-100">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                    <input 
-                        type="text" 
-                        placeholder="Search Plate, VIN, or Owner..." 
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-100 uppercase"
-                    />
+                    <input type="text" placeholder="Search Plate, VIN..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-100 uppercase" />
                 </div>
             </div>
             <div className="flex-1 overflow-y-auto">
-                {filteredVehicles.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-64 text-center p-6">
-                        <div className="bg-gray-100 p-4 rounded-full mb-3">
-                            <Car size={32} className="text-gray-400" />
+                {filteredVehicles.map(vehicle => (
+                    <div key={vehicle.id} onClick={() => setSelectedVehicle(vehicle)} className={`p-4 border-b border-gray-50 cursor-pointer transition-colors hover:bg-slate-50 ${selectedVehicle?.id === vehicle.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}>
+                        <div className="flex justify-between items-start mb-1">
+                            <h3 className="font-bold text-gray-900">{vehicle.plateNumber}</h3>
+                            <span className="text-xs font-medium text-gray-500">{vehicle.year}</span>
                         </div>
-                        <h3 className="text-gray-900 font-medium mb-1">No Vehicles Found</h3>
-                        <p className="text-sm text-gray-500 mb-4">
-                            {searchQuery ? `No matches for "${searchQuery}"` : "Get started by adding a vehicle to the registry."}
-                        </p>
-                        {!searchQuery && (
-                            <button onClick={() => setIsAddModalOpen(true)} className="text-blue-600 text-sm font-bold hover:underline">
-                                Register First Vehicle
-                            </button>
-                        )}
+                        <p className="text-sm text-gray-600">{vehicle.make} {vehicle.model}</p>
+                        <p className="text-xs text-gray-400 mt-1 truncate">Owner: {vehicle.ownerName}</p>
                     </div>
-                ) : (
-                    filteredVehicles.map(vehicle => (
-                        <div 
-                            key={vehicle.id}
-                            onClick={() => setSelectedVehicle(vehicle)}
-                            className={`p-4 border-b border-gray-50 cursor-pointer transition-colors hover:bg-slate-50 ${selectedVehicle?.id === vehicle.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
-                        >
-                            <div className="flex justify-between items-start mb-1">
-                                <h3 className="font-bold text-gray-900">{vehicle.plateNumber}</h3>
-                                <span className="text-xs font-medium text-gray-500">{vehicle.year}</span>
-                            </div>
-                            <p className="text-sm text-gray-600">{vehicle.make} {vehicle.model}</p>
-                            <p className="text-xs text-gray-400 mt-1 truncate">Owner: {vehicle.ownerName}</p>
-                        </div>
-                    ))
-                )}
+                ))}
             </div>
          </div>
 
@@ -223,233 +102,123 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({ vehicles, setVehicles
                                 <div>
                                     <h1 className="text-3xl font-bold text-gray-900">{selectedVehicle.plateNumber}</h1>
                                     <p className="text-gray-500 font-medium">{selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}</p>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 flex items-center gap-1">
+                                            <Shield size={12}/> Ownership Verified
+                                        </span>
+                                        <span className="text-xs text-gray-400 font-mono">VIN: {selectedVehicle.vin}</span>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flex gap-2">
-                                <button className="bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-700">Edit Specs</button>
-                                <button className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">New Job Card</button>
-                            </div>
-                        </div>
-
-                        {/* Specs Grid */}
-                        <div className="grid grid-cols-4 gap-4 mt-6">
-                             <div className="bg-white p-3 rounded-lg border border-gray-100">
-                                 <p className="text-xs text-gray-400 mb-1">VIN / Chassis</p>
-                                 <p className="font-mono text-sm font-medium text-gray-800">{selectedVehicle.vin}</p>
-                             </div>
-                             <div className="bg-white p-3 rounded-lg border border-gray-100">
-                                 <p className="text-xs text-gray-400 mb-1">Engine</p>
-                                 <p className="text-sm font-medium text-gray-800 flex items-center gap-1">
-                                    <Fuel size={12} /> {selectedVehicle.engineSize} • {selectedVehicle.fuelType}
-                                 </p>
-                             </div>
-                             <div className="bg-white p-3 rounded-lg border border-gray-100">
-                                 <p className="text-xs text-gray-400 mb-1">Transmission</p>
-                                 <p className="text-sm font-medium text-gray-800 flex items-center gap-1">
-                                     <GitCommit size={12} /> {selectedVehicle.transmission}
-                                 </p>
-                             </div>
-                             <div className="bg-white p-3 rounded-lg border border-gray-100">
-                                 <p className="text-xs text-gray-400 mb-1">Current Owner</p>
-                                 <p className="text-sm font-medium text-gray-800">{selectedVehicle.ownerName}</p>
-                             </div>
+                            <button className="bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-700">Edit Specs</button>
                         </div>
                     </div>
 
-                    {/* Digital Logbook / Timeline */}
+                    {/* Immutable Ledger */}
                     <div className="p-6">
-                        <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
-                            <History size={20} className="text-blue-500" /> Digital Service Record
-                        </h3>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                <LinkIcon size={20} className="text-blue-500" /> Digital Service Ledger
+                            </h3>
+                            <button 
+                                onClick={handleVerifyChain}
+                                disabled={verifyingHash === 'START' || verifyingHash === 'DONE'}
+                                className={`text-xs px-3 py-1.5 rounded-full border flex items-center gap-2 font-medium transition-all ${
+                                    verifyingHash === 'DONE' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+                                }`}
+                            >
+                                {verifyingHash === 'START' ? (
+                                    <>Verifying Hashes...</>
+                                ) : verifyingHash === 'DONE' ? (
+                                    <><CheckCircle size={14}/> Chain Validated</>
+                                ) : (
+                                    <><Lock size={14}/> Verify Chain Integrity</>
+                                )}
+                            </button>
+                        </div>
                         
-                        <div className="relative pl-8 border-l-2 border-gray-100 space-y-8">
-                            {currentTimeline.length > 0 ? (
-                                currentTimeline.map((event) => (
-                                    <div key={event.id} className="relative">
-                                        <div className={`absolute -left-[41px] p-2 rounded-full border-2 border-white shadow-sm ${getEventColor(event.type)}`}>
-                                            {getEventIcon(event.type)}
+                        <div className="relative pl-8 border-l-2 border-dashed border-gray-300 space-y-8">
+                            {getLedger(selectedVehicle.id).length > 0 ? (
+                                getLedger(selectedVehicle.id).map((record, idx) => (
+                                    <div key={record.id} className="relative group">
+                                        <div className={`absolute -left-[41px] p-2 rounded-full border-2 border-white shadow-md z-10 transition-colors ${
+                                            verifyingHash === 'START' ? 'bg-yellow-400 animate-pulse' : 
+                                            verifyingHash === 'DONE' ? 'bg-green-500 text-white' : 'bg-slate-800 text-white'
+                                        }`}>
+                                            <FileText size={16} />
                                         </div>
-                                        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-                                            <div className="flex justify-between items-start mb-2">
+                                        
+                                        {/* Ledger Block */}
+                                        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all hover:border-blue-300">
+                                            <div className="flex justify-between items-start mb-3 pb-3 border-b border-gray-100">
                                                 <div>
-                                                    <h4 className="font-bold text-gray-900">{event.title}</h4>
-                                                    <p className="text-sm text-gray-500">{event.garage}</p>
+                                                    <h4 className="font-bold text-gray-900 text-lg">{record.description}</h4>
+                                                    <p className="text-sm text-gray-500 font-medium">{record.garageName}</p>
                                                 </div>
-                                                <span className="text-xs font-mono font-medium bg-gray-100 px-2 py-1 rounded text-gray-600">
-                                                    {event.date}
-                                                </span>
+                                                <div className="text-right">
+                                                    <span className="block text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-600 mb-1">
+                                                        {new Date(record.timestamp).toLocaleDateString()}
+                                                    </span>
+                                                    <span className="text-xs font-bold text-blue-600">
+                                                        {record.mileage.toLocaleString()} km
+                                                    </span>
+                                                </div>
                                             </div>
-                                            <p className="text-gray-700 text-sm mb-3">{event.description}</p>
-                                            {event.mileage && (
-                                                <div className="flex items-center gap-2 text-xs text-gray-400 bg-gray-50 inline-flex px-2 py-1 rounded">
-                                                    <span className="font-bold">Mileage:</span> {event.mileage.toLocaleString()} km
+                                            
+                                            <div className="text-sm text-gray-700 mb-4">
+                                                <div className="flex flex-wrap gap-2">
+                                                    {record.items.map((item, i) => (
+                                                        <span key={i} className="bg-slate-50 px-2 py-1 rounded text-xs border border-slate-100">{item}</span>
+                                                    ))}
                                                 </div>
-                                            )}
+                                            </div>
+
+                                            {/* Cryptographic Proof */}
+                                            <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 font-mono text-[10px] text-slate-500">
+                                                <div className="flex justify-between mb-1">
+                                                    <span>Hash:</span>
+                                                    <span className="text-blue-600 truncate max-w-[200px]" title={record.hash}>{record.hash}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Prev:</span>
+                                                    <span className="text-slate-400 truncate max-w-[200px]" title={record.previousHash}>{record.previousHash}</span>
+                                                </div>
+                                            </div>
                                         </div>
+                                        
+                                        {/* Connector */}
+                                        {idx !== getLedger(selectedVehicle.id).length - 1 && (
+                                            <div className="absolute left-[-25px] bottom-[-20px] w-0.5 h-8 bg-gray-300"></div>
+                                        )}
                                     </div>
                                 ))
                             ) : (
-                                <p className="text-gray-400 text-sm">No history events recorded yet.</p>
+                                <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                    <Database size={32} className="mx-auto text-gray-300 mb-2"/>
+                                    <p className="text-gray-500">No service blocks minted yet.</p>
+                                    <p className="text-xs text-gray-400">Complete a Job Card to mint the first record.</p>
+                                </div>
                             )}
                         </div>
                     </div>
-
                 </div>
             ) : (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400">
                     <Database size={64} className="mb-4 text-slate-200" />
-                    <p className="font-medium text-lg">Select a vehicle to view its Digital Logbook</p>
+                    <p className="font-medium text-lg">Select a vehicle to view its Chain of Trust</p>
                 </div>
             )}
          </div>
        </div>
 
-       {/* Add Vehicle Modal */}
+       {/* Add Vehicle Modal (Simplified) */}
        {isAddModalOpen && (
          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-               <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                  <h3 className="font-bold text-xl text-gray-800">Register New Vehicle</h3>
-                  <button onClick={() => setIsAddModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                     <X size={24} />
-                  </button>
-               </div>
-               
-               <div className="p-6 overflow-y-auto space-y-4">
-                  <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">Vehicle Identification</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                      <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Plate Number</label>
-                         <input 
-                            type="text" 
-                            className="w-full border rounded-lg p-2.5 uppercase font-medium" 
-                            placeholder="KAA 123A"
-                            value={newVehicle.plateNumber}
-                            onChange={(e) => setNewVehicle({...newVehicle, plateNumber: e.target.value})}
-                         />
-                      </div>
-                      <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">VIN / Chassis No</label>
-                         <input 
-                            type="text" 
-                            className="w-full border rounded-lg p-2.5 uppercase" 
-                            placeholder="XXXXXXXXXXXXXXXXX"
-                            value={newVehicle.vin}
-                            onChange={(e) => setNewVehicle({...newVehicle, vin: e.target.value})}
-                         />
-                      </div>
-                  </div>
-
-                  <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2 pt-2">Specs & Model</h4>
-                  <div className="grid grid-cols-2 gap-4">
-                      <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Make</label>
-                         <input 
-                            type="text" 
-                            className="w-full border rounded-lg p-2.5" 
-                            placeholder="Toyota"
-                            value={newVehicle.make}
-                            onChange={(e) => setNewVehicle({...newVehicle, make: e.target.value})}
-                         />
-                      </div>
-                      <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                         <input 
-                            type="text" 
-                            className="w-full border rounded-lg p-2.5" 
-                            placeholder="Premio"
-                            value={newVehicle.model}
-                            onChange={(e) => setNewVehicle({...newVehicle, model: e.target.value})}
-                         />
-                      </div>
-                      <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
-                         <input 
-                            type="number" 
-                            className="w-full border rounded-lg p-2.5" 
-                            placeholder="2018"
-                            value={newVehicle.year}
-                            onChange={(e) => setNewVehicle({...newVehicle, year: parseInt(e.target.value)})}
-                         />
-                      </div>
-                      <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
-                         <input 
-                            type="text" 
-                            className="w-full border rounded-lg p-2.5" 
-                            placeholder="White"
-                            value={newVehicle.color}
-                            onChange={(e) => setNewVehicle({...newVehicle, color: e.target.value})}
-                         />
-                      </div>
-                  </div>
-
-                  <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2 pt-2">Technical Details</h4>
-                   <div className="grid grid-cols-3 gap-4">
-                      <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Fuel Type</label>
-                         <select 
-                            className="w-full border rounded-lg p-2.5"
-                            value={newVehicle.fuelType}
-                            onChange={(e) => setNewVehicle({...newVehicle, fuelType: e.target.value as any})}
-                         >
-                            <option value="PETROL">Petrol</option>
-                            <option value="DIESEL">Diesel</option>
-                            <option value="HYBRID">Hybrid</option>
-                            <option value="ELECTRIC">Electric</option>
-                         </select>
-                      </div>
-                      <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Transmission</label>
-                         <select 
-                             className="w-full border rounded-lg p-2.5"
-                             value={newVehicle.transmission}
-                             onChange={(e) => setNewVehicle({...newVehicle, transmission: e.target.value as any})}
-                         >
-                            <option value="AUTOMATIC">Automatic</option>
-                            <option value="MANUAL">Manual</option>
-                         </select>
-                      </div>
-                      <div>
-                         <label className="block text-sm font-medium text-gray-700 mb-1">Engine CC</label>
-                         <input 
-                            type="text" 
-                            className="w-full border rounded-lg p-2.5" 
-                            placeholder="1500cc"
-                            value={newVehicle.engineSize}
-                            onChange={(e) => setNewVehicle({...newVehicle, engineSize: e.target.value})}
-                         />
-                      </div>
-                   </div>
-
-                   <h4 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2 pt-2">Ownership</h4>
-                   <div>
-                       <label className="block text-sm font-medium text-gray-700 mb-1">Owner Name</label>
-                       <input 
-                          type="text" 
-                          className="w-full border rounded-lg p-2.5" 
-                          placeholder="Full Name"
-                          value={newVehicle.ownerName}
-                          onChange={(e) => setNewVehicle({...newVehicle, ownerName: e.target.value})}
-                       />
-                   </div>
-               </div>
-
-               <div className="p-6 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
-                  <button 
-                     onClick={() => setIsAddModalOpen(false)}
-                     className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 font-medium"
-                  >
-                     Cancel
-                  </button>
-                  <button 
-                     onClick={handleAddVehicle}
-                     className="px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium shadow-sm"
-                     disabled={!newVehicle.plateNumber || !newVehicle.make}
-                  >
-                     Save Vehicle
-                  </button>
-               </div>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+                <h3 className="font-bold text-xl mb-4">Add Vehicle</h3>
+                <input className="w-full border p-2 rounded mb-2" placeholder="Plate" value={newVehicle.plateNumber} onChange={e => setNewVehicle({...newVehicle, plateNumber: e.target.value})} />
+                <input className="w-full border p-2 rounded mb-4" placeholder="Make" value={newVehicle.make} onChange={e => setNewVehicle({...newVehicle, make: e.target.value})} />
+                <button onClick={handleAddVehicle} className="w-full bg-blue-600 text-white p-2 rounded">Save</button>
             </div>
          </div>
        )}

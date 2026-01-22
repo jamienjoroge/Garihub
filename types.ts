@@ -34,6 +34,10 @@ export interface TenantSettings {
     colors?: { primary: string };
   };
   invoiceTerms: string;
+  invoiceConfig: {
+      prefix: string;
+      sequence: number;
+  };
 }
 
 export interface ServicePackage {
@@ -183,14 +187,24 @@ export interface Expense {
   paidBy: string;
 }
 
+// --- IMMUTABLE SERVICE LEDGER ---
 export interface ServiceRecord {
   id: string;
+  vehicleId: string; // Decoupled from owner to stay with car
   date: string;
   garageName: string;
+  garageId?: string;
   description: string;
   mileage: number;
   cost: number;
   items: string[];
+  
+  // Audit / Blockchain-lite fields
+  hash: string; // Cryptographic-like hash of the record content + prevHash
+  previousHash: string; // Links to previous record for this VIN
+  timestamp: string; // When it was minted/finalized
+  recordedBy: string; // User/Technician ID
+  isVerified: boolean; // For UI logic
 }
 
 export interface ServiceBay {
@@ -237,6 +251,7 @@ export interface JobCard {
   technicianId?: string; // Linked to Employee
   technicianName?: string;
   bayId?: string; // Linked to ServiceBay
+  mileage?: number; // Recorded at time of job
   aiDiagnosis?: string;
   diagnosis?: DiagnosisItem[]; // New diagnosis workflow
   inspectionId?: string; // Linked to Inspection
