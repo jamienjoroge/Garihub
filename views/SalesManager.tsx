@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Download, Filter, FileText, CheckCircle2, X, Printer, Send, Search, Trash2, Calendar, User, Briefcase, DollarSign, ArrowRight, ClipboardList, Wrench, PackageCheck } from 'lucide-react';
 import { Invoice, Quotation, SalesOrder, InvoiceItem, Branch, TenantSettings } from '../types';
+import { apiClient } from '../services/apiClient';
 
 interface SalesManagerProps {
     salesOrders: SalesOrder[];
@@ -176,7 +177,8 @@ const SalesManager: React.FC<SalesManagerProps> = ({
           }))
       };
       
-      onInvoiceCreated(invoice); // Push to Global State & Finance
+      onInvoiceCreated(invoice);
+      apiClient.post('/api/invoices', { invoiceId: invoice.id, jobId: invoice.jobId, customerName: invoice.customerName, branchId: invoice.branchId, currency: tenantSettings?.currency || 'KES', items: invoice.items.map(i => ({ description: i.description, quantity: i.quantity, unitCost: i.unitCost, total: i.total })), netAmount: subtotal, dueDate: invoice.dueDate }).catch(() => {});
       setShowCreateInvoiceModal(false);
   };
 
@@ -579,7 +581,7 @@ const SalesManager: React.FC<SalesManagerProps> = ({
                        </p>
                        <div className="flex gap-3">
                            <button onClick={() => setShowPaymentModal(false)} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-600 font-medium">Cancel</button>
-                           <button onClick={() => { onRecordPayment(selectedInvoice); setShowPaymentModal(false); }} className="flex-1 py-2.5 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700">Confirm Paid</button>
+                           <button onClick={() => { onRecordPayment(selectedInvoice); apiClient.post('/api/payments', { paymentId: `PAY-${Date.now()}`, invoiceId: selectedInvoice.id, amount: selectedInvoice.amount, paymentMethod: 'cash', reference: 'UI', receivedAt: new Date().toISOString(), branchId: currentBranch.id }).catch(() => {}); setShowPaymentModal(false); }} className="flex-1 py-2.5 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700">Confirm Paid</button>
                        </div>
                    </div>
                </div>

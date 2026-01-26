@@ -1,0 +1,1 @@
+Responsibilities: employee lifecycle, leave, payroll, deductions.

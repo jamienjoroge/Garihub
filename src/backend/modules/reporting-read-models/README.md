@@ -1,0 +1,1 @@
+Responsibilities: consolidated reports, KPIs, dashboards, views.

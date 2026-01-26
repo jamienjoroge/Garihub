@@ -1,0 +1,1 @@
+Responsibilities: customer onboarding, vehicle registry, appointments, communications.

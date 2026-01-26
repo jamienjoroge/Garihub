@@ -29,6 +29,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, role, se
     { id: 'ASSETS', label: 'Fixed Assets', icon: Monitor, roles: ['MANAGER'] },
     { id: 'SETTINGS', label: 'Configuration', icon: Settings, roles: ['MANAGER'] },
     { id: 'CUSTOMER_PORTAL', label: 'My Vehicle', icon: Car, roles: ['CUSTOMER'] },
+    { id: 'CUSTOMER_VEHICLES_LIST', label: 'My Vehicles', icon: Car, roles: ['CUSTOMER'] },
+    { id: 'CUSTOMER_PREFERENCES', label: 'Preferences', icon: Settings, roles: ['CUSTOMER'] },
+    { id: 'CUSTOMER_NOTIFICATIONS', label: 'Notifications', icon: ClipboardCheck, roles: ['CUSTOMER'] },
   ];
 
   return (
@@ -81,7 +84,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, role, se
           return (
             <button
               key={item.id}
-              onClick={() => setCurrentView(item.id as ViewState)}
+              onClick={() => {
+                if (item.id === 'CUSTOMER_VEHICLES_LIST') { window.location.assign('/customer/vehicles'); return; }
+                if (item.id === 'CUSTOMER_PREFERENCES') { window.location.assign('/customer/preferences'); return; }
+                if (item.id === 'CUSTOMER_NOTIFICATIONS') { window.location.assign('/customer/notifications'); return; }
+                setCurrentView(item.id as ViewState);
+              }}
               title={isCollapsed ? item.label : ''}
               className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-3 px-3 py-3 rounded-lg transition-all duration-200 group ${
                 isActive 

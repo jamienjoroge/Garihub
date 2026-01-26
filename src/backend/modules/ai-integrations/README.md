@@ -1,0 +1,1 @@
+Responsibilities: AI diagnosis, estimates, marketing, sentiment.

@@ -1,0 +1,1 @@
+Responsibilities: stock movements, purchasing, adjustments, disposals, transfers.

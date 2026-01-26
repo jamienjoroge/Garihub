@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Search, Car, History, FileText, PenTool, Shield, User, Fuel, GitCommit, Database, Plus, X, FolderOpen, Link as LinkIcon, CheckCircle, Lock, AlertOctagon, UserPlus, AlertCircle, Edit3 } from 'lucide-react';
 import { Vehicle, JobCard, Inspection, ServiceRecord, LedgerEventType } from '../types';
+import { apiClient } from '../services/apiClient';
+import { QRCodeCanvas } from 'qrcode.react';
 
 interface VehicleRegistryProps {
     vehicles: Vehicle[];
@@ -18,6 +20,8 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [remoteHistory, setRemoteHistory] = useState<any | null>(null);
+  const [remoteInspections, setRemoteInspections] = useState<any | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [verifyingHash, setVerifyingHash] = useState<string | null>(null); // Ledger verification animation state
 
@@ -27,6 +31,8 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({
   
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferForm, setTransferForm] = useState({ newOwner: '', notes: '' });
+  const [shareInfo, setShareInfo] = useState<{ tokenId: string; expiresAt: string } | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
 
   const [newVehicle, setNewVehicle] = useState<Partial<Vehicle>>({
     plateNumber: '', make: '', model: '', year: new Date().getFullYear(), vin: '', ownerName: '', color: '', fuelType: 'PETROL', transmission: 'AUTOMATIC', engineSize: ''
@@ -39,6 +45,10 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({
 
   // Get Chain History (Immutable Ledger)
   const getLedger = (vehicleId: string) => {
+      if (remoteHistory && remoteHistory.vehicleId === vehicleId) {
+        const tl = remoteHistory.timeline || [];
+        return tl.map((t: any, idx: number) => ({ id: `${vehicleId}-${idx}`, vehicleId, timestamp: t.date, description: t.details?.summary || t.type, eventType: 'SERVICE_RECORD' as any }));
+      }
       return serviceRecords
         .filter(r => r.vehicleId === vehicleId)
         .sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -83,6 +93,20 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({
       }
   };
 
+  const handleShareHistory = async () => {
+    if (!selectedVehicle) return;
+    setIsSharing(true);
+    const tokenId = `tok-${Date.now()}`;
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    try {
+      await apiClient.post(`/api/vehicles/${selectedVehicle.id}/share`, { tokenId, expiresAt, reason: 'resale' });
+      setShareInfo({ tokenId, expiresAt });
+    } catch {
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   const renderEventIcon = (type: LedgerEventType) => {
       switch(type) {
           case 'SERVICE_RECORD': return <FileText size={16}/>;
@@ -124,7 +148,7 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({
             </div>
             <div className="flex-1 overflow-y-auto">
                 {filteredVehicles.map(vehicle => (
-                    <div key={vehicle.id} onClick={() => setSelectedVehicle(vehicle)} className={`p-4 border-b border-gray-50 cursor-pointer transition-colors hover:bg-slate-50 ${selectedVehicle?.id === vehicle.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}>
+                    <div key={vehicle.id} onClick={async () => { setSelectedVehicle(vehicle); try { const hist = await apiClient.get(`/api/vehicles/${vehicle.id}/history`); setRemoteHistory(hist); const insp = await apiClient.get(`/api/vehicles/${vehicle.id}/inspections`); setRemoteInspections(insp); } catch {} }} className={`p-4 border-b border-gray-50 cursor-pointer transition-colors hover:bg-slate-50 ${selectedVehicle?.id === vehicle.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}>
                         <div className="flex justify-between items-start mb-1">
                             <h3 className="font-bold text-gray-900">{vehicle.plateNumber}</h3>
                             <span className="text-xs font-medium text-gray-500">{vehicle.year}</span>
@@ -164,6 +188,23 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({
                                     <UserPlus size={16}/> Transfer Ownership
                                 </button>
                                 <button className="bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-700">Edit Specs</button>
+                                <button onClick={handleShareHistory} disabled={isSharing} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2">
+                                    {isSharing ? 'Sharing...' : 'Share history'}
+                                </button>
+                                {shareInfo && (
+                                  <button onClick={async () => {
+                                    const headers: Record<string,string> = {
+                                      'x-tenant-id': (import.meta as any).env?.VITE_TENANT_ID || 't1',
+                                      'x-branch-id': (import.meta as any).env?.VITE_BRANCH_ID || 'b1',
+                                      'x-user-id': (import.meta as any).env?.VITE_USER_ID || 'u1',
+                                    };
+                                    const res = await fetch(`/api/vehicles/${selectedVehicle!.id}/history.pdf?tokenId=${shareInfo.tokenId}`, { headers });
+                                    const blob = await res.blob();
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url; a.download = `vehicle-${selectedVehicle!.id}-history.pdf`; a.click(); URL.revokeObjectURL(url);
+                                  }} className="bg-white border border-gray-200 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-700">Download PDF</button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -192,6 +233,27 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({
                         </div>
                         
                         <div className="relative pl-8 border-l-2 border-dashed border-gray-300 space-y-8">
+                            {shareInfo && (
+                              {(() => {
+                                const url = `${window.location.origin}/public/vehicles/${selectedVehicle.id}/history?token=${shareInfo.tokenId}`;
+                                const remainingMs = new Date(shareInfo.expiresAt).getTime() - Date.now();
+                                const remainingDays = Math.max(0, Math.floor(remainingMs / (1000*60*60*24)));
+                                const expired = remainingMs <= 0;
+                                return (
+                                  <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg text-sm flex items-center justify-between gap-3">
+                                    <div>
+                                      <div className="font-bold text-indigo-800">Share Link</div>
+                                      <div className="font-mono text-indigo-700 text-xs break-all">{url}</div>
+                                      <div className="text-xs text-indigo-700">Expires: {new Date(shareInfo.expiresAt).toLocaleString()} {expired ? (<span className="ml-2 px-2 py-0.5 rounded bg-red-100 text-red-700">expired</span>) : (<span className="ml-2 px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">Expires in {remainingDays} days</span>)}</div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <QRCodeCanvas value={url} size={72} includeMargin={true} />
+                                      <button disabled={expired} onClick={() => navigator.clipboard.writeText(url)} className={`px-2 py-1 rounded text-xs ${expired ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-indigo-600 text-white'}`}>Copy</button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            )}
                             {getLedger(selectedVehicle.id).length > 0 ? (
                                 getLedger(selectedVehicle.id).map((record, idx) => (
                                     <div key={record.id} className="relative group">

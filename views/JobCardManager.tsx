@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, BrainCircuit, CheckCircle2, Clock, Wrench, ChevronRight, FileText, Calendar as CalendarIcon, User, ArrowRight, LayoutGrid, X, Package, ShoppingCart, Timer, Pause, Play, StopCircle, BadgeCheck, AlertTriangle, ClipboardList, Filter, Lock, MoreHorizontal, Stethoscope, Bell, MessageSquare, ListChecks, CalendarDays, Phone, Car, Printer, ClipboardCheck, Loader2, Save } from 'lucide-react';
 import { JobCard, JobStatus, Appointment, ServiceBay, Product, LaborLog, Branch, UserRole, DiagnosisItem, ServicePackage, TenantSettings, StockMovement, Account, JournalEntry } from '../types';
 import { diagnoseIssue, estimateRepairCost } from '../services/geminiService';
+import { apiClient } from '../services/apiClient';
 
 interface JobCardManagerProps {
     jobs: JobCard[];
@@ -90,6 +91,8 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({
   const [partSearch, setPartSearch] = useState('');
   const [selectedPartId, setSelectedPartId] = useState('');
   const [addQuantity, setAddQuantity] = useState(1);
+  const [isAddingPart, setIsAddingPart] = useState(false);
+  const [partError, setPartError] = useState<string | null>(null);
 
   const availableTechnicians = [
       { id: 'EMP-001', name: 'David Omondi', rate: 800 },
@@ -122,6 +125,7 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({
     };
     if (onCheckIn) onCheckIn(newJob, checkInMode, selectedPackageId, diagnosisPaid ? diagnosisFee : 0);
     else onCreateJob(newJob);
+    apiClient.post('/api/jobs', { job: newJob }).catch(() => {});
     setIsModalOpen(false); setNewPlate(''); setNewModel(''); setNewDescription(''); setNewOwner('');
   };
 
@@ -150,7 +154,9 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({
              if (bayIndex !== -1) updatedBays[bayIndex] = { ...updatedBays[bayIndex], status: 'AVAILABLE', currentJobId: undefined };
           }
       }
-      onUpdateJob(updatedJob); setServiceBays(updatedBays); setWorkflowJob(updatedJob); // Update local workflow state too
+      onUpdateJob(updatedJob); setServiceBays(updatedBays); setWorkflowJob(updatedJob);
+      if (updatedJob.status === JobStatus.IN_PROGRESS) apiClient.post(`/api/jobs/${updatedJob.id}/start`, { startTime: new Date().toISOString() }).catch(() => {});
+      if (updatedJob.status === JobStatus.COMPLETED) apiClient.post(`/api/jobs/${updatedJob.id}/complete`, { completionNotes: 'Completed via UI' }).catch(() => {});
   };
 
   const handleMintRecord = () => {
@@ -168,11 +174,28 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({
 
   // ... (Keep Add Part, Diagnosis, AI, ClockIn logic identical to previous file) ...
   const handleAddDiagnosisItem = () => { if(newDiagnosis.description && workflowJob) { const item: DiagnosisItem = { id: `DX-${Date.now()}`, description: newDiagnosis.description!, severity: newDiagnosis.severity as any, proposedFix: newDiagnosis.proposedFix, estimatedLaborCost: Number(newDiagnosis.estimatedLaborCost)||0, estimatedPartCost: Number(newDiagnosis.estimatedPartCost)||0 }; const updatedJob = { ...workflowJob, diagnosis: [...(workflowJob.diagnosis || []), item] }; setWorkflowJob(updatedJob); onUpdateJob(updatedJob); setNewDiagnosis({ description: '', severity: 'MEDIUM', proposedFix: '', estimatedLaborCost: 0, estimatedPartCost: 0 }); } };
-  const handleAddPartToJob = async () => { /* ... (Same as before) ... */ };
+  const handleAddPartToJob = async () => {
+    if (!workflowJob || !selectedPartId || addQuantity <= 0) return;
+    setIsAddingPart(true);
+    setPartError(null);
+    try {
+      await apiClient.post(`/api/jobs/${workflowJob.id}/parts`, { productId: selectedPartId, quantity: addQuantity });
+      const updatedJob = {
+        ...workflowJob,
+        partsUsed: [...(workflowJob.partsUsed || []), { productId: selectedPartId, quantity: addQuantity }],
+      } as JobCard;
+      setWorkflowJob(updatedJob);
+      onUpdateJob(updatedJob);
+    } catch (err: any) {
+      setPartError(err?.message || 'Failed to add part');
+    } finally {
+      setIsAddingPart(false);
+    }
+  };
   const handleAiDiagnose = async () => { /* ... (Same as before) ... */ };
   const handleGenerateQuoteAction = () => { if(workflowJob) { onGenerateQuote(workflowJob); setIsWorkflowModalOpen(false); } };
-  const handleClockIn = () => { if(workflowJob) { const updatedJob = {...workflowJob, laborLogs: [...(workflowJob.laborLogs||[]), {id: `L-${Date.now()}`, technicianId: workflowJob.technicianId!, technicianName: workflowJob.technicianName!, startTime: new Date().toISOString(), hourlyRate: 500, cost: 0}]}; setWorkflowJob(updatedJob); onUpdateJob(updatedJob); }};
-  const handleClockOut = (id: string) => { if(workflowJob) { const updatedJob = {...workflowJob, laborLogs: workflowJob.laborLogs?.map(l => l.id === id ? {...l, endTime: new Date().toISOString(), durationMinutes: 60, cost: 500} : l)}; setWorkflowJob(updatedJob); onUpdateJob(updatedJob!); }};
+  const handleClockIn = () => { if(workflowJob) { const log = {id: `L-${Date.now()}`, technicianId: workflowJob.technicianId!, technicianName: workflowJob.technicianName!, startTime: new Date().toISOString(), hourlyRate: 500, cost: 0}; const updatedJob = {...workflowJob, laborLogs: [...(workflowJob.laborLogs||[]), log]}; setWorkflowJob(updatedJob); onUpdateJob(updatedJob); apiClient.post(`/api/jobs/${workflowJob.id}/labor`, { ...log, job_id: workflowJob.id, endTime: new Date().toISOString(), durationMinutes: 60, cost: 500 }).catch(() => {}); }};
+  const handleClockOut = (id: string) => { if(workflowJob) { const updatedJob = {...workflowJob, laborLogs: workflowJob.laborLogs?.map(l => l.id === id ? {...l, endTime: new Date().toISOString(), durationMinutes: 60, cost: 500} : l)}; setWorkflowJob(updatedJob); onUpdateJob(updatedJob!); apiClient.post(`/api/jobs/${workflowJob.id}/labor`, { job_id: workflowJob.id, technicianId: workflowJob.technicianId, startTime: new Date().toISOString(), endTime: new Date().toISOString(), durationMinutes: 60, hourlyRate: 500, cost: 500 }).catch(() => {}); }};
 
   return (
     <div className="p-8 h-full flex flex-col">
@@ -267,6 +290,7 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({
                   <div className="flex border-b border-gray-100 px-6">
                       <button onClick={() => setWorkflowTab('OVERVIEW')} className={`px-4 py-3 text-sm font-medium border-b-2 ${workflowTab === 'OVERVIEW' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Overview</button>
                       <button onClick={() => setWorkflowTab('DIAGNOSIS')} className={`px-4 py-3 text-sm font-medium border-b-2 ${workflowTab === 'DIAGNOSIS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Diagnosis</button>
+                      <button onClick={() => setWorkflowTab('PARTS')} className={`px-4 py-3 text-sm font-medium border-b-2 ${workflowTab === 'PARTS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Parts</button>
                       {/* ... */}
                   </div>
 
@@ -311,6 +335,38 @@ const JobCardManager: React.FC<JobCardManagerProps> = ({
                                   </div>
                               )}
                           </div>
+                      )}
+                      {workflowTab === 'PARTS' && (
+                        <div className="space-y-4">
+                          <div className="flex gap-2 items-center">
+                            <input
+                              type="text"
+                              placeholder="Search part"
+                              className="flex-1 border rounded-lg p-2 text-sm"
+                              value={partSearch}
+                              onChange={(e) => setPartSearch(e.target.value)}
+                            />
+                            <select className="border rounded-lg p-2 text-sm" value={selectedPartId} onChange={(e) => setSelectedPartId(e.target.value)}>
+                              <option value="">Select Part</option>
+                              {filteredParts.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                              ))}
+                            </select>
+                            <input type="number" className="w-24 border rounded-lg p-2 text-sm" value={addQuantity} onChange={(e) => setAddQuantity(parseInt(e.target.value) || 1)} />
+                            <button onClick={handleAddPartToJob} disabled={isAddingPart || !selectedPartId || addQuantity <= 0} className={`bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2`}>
+                              {isAddingPart ? <Loader2 size={16} className="animate-spin"/> : <Package size={16}/>} Add Part
+                            </button>
+                          </div>
+                          {partError && (<div className="text-red-600 text-sm">{partError}</div>)}
+                          <div className="bg-gray-50 p-3 rounded-lg">
+                            <h4 className="font-bold text-gray-700 mb-2">Parts Used</h4>
+                            <ul className="text-sm text-gray-700 space-y-1">
+                              {(workflowJob.partsUsed || []).map((pu, idx) => (
+                                <li key={idx}>{pu.productId} × {pu.quantity}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
                       )}
                       
                       {/* ... Other Tabs (Diagnosis, Parts, Labor) ... */}

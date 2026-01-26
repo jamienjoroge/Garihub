@@ -1,0 +1,1 @@
+Responsibilities: append-only immutable event storage, replay, audit, compliance.

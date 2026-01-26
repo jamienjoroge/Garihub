@@ -1,0 +1,1 @@
+Responsibilities: journal entries, tax calculation, returns, depreciation.

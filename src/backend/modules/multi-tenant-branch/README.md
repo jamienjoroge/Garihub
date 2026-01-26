@@ -1,0 +1,1 @@
+Responsibilities: branches, tenant configs, user branch access, inter-branch operations.

@@ -1,0 +1,1 @@
+Responsibilities: quotations, orders, invoices, payments, credit notes.

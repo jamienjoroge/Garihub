@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, 
   LineChart, Line, AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
 import { TrendingUp, Users, Wrench, AlertCircle, DollarSign, Package, ClipboardCheck, Clock, CheckCircle2, ArrowUpRight, ArrowDownRight, Briefcase, FileText, Activity, AlertTriangle, ShieldAlert, WifiOff, RefreshCcw } from 'lucide-react';
 import { DashboardStats, UserRole, SystemAlert } from '../types';
+import { apiClient } from '../services/apiClient';
 
 interface DashboardProps {
   stats: DashboardStats;
@@ -88,6 +89,17 @@ const systemAlerts: SystemAlert[] = [
 
 const GarageDashboard: React.FC<DashboardProps> = ({ stats, role }) => {
   const [alerts, setAlerts] = useState<SystemAlert[]>(systemAlerts);
+  const [summary, setSummary] = useState<any[] | null>(null);
+  const [jobsProfit, setJobsProfit] = useState<any[] | null>(null);
+  useEffect(() => {
+    const month = new Date().toISOString().slice(0,7);
+    apiClient.get(`/api/manager/summary?month=${month}`).then(setSummary).catch(() => {});
+    apiClient.get(`/api/manager/jobs/profitability`).then(setJobsProfit).catch(() => {});
+  }, []);
+  const totalRevenue = summary ? Number(summary.reduce((s, r: any) => s + Number(r.totalRevenue || 0), 0).toFixed(2)) : stats.revenueMonth;
+  const totalCOGS = summary ? Number(summary.reduce((s, r: any) => s + Number(r.totalCOGS || 0), 0).toFixed(2)) : 0;
+  const grossProfit = summary ? Number((totalRevenue - totalCOGS).toFixed(2)) : (stats.revenueMonth * 0.22);
+  const outstandingReceivables = summary ? Number(summary.reduce((s, r: any) => s + Number(r.outstandingReceivables || 0), 0).toFixed(2)) : 145000;
 
   const dismissAlert = (id: string) => {
       setAlerts(alerts.map(a => a.id === id ? { ...a, status: 'RESOLVED' } : a));
@@ -130,7 +142,7 @@ const GarageDashboard: React.FC<DashboardProps> = ({ stats, role }) => {
                         <DollarSign size={64} className="text-blue-600"/>
                     </div>
                     <p className="text-gray-500 text-sm font-medium mb-1">Total Revenue (MTD)</p>
-                    <h3 className="text-2xl font-bold text-gray-900">KES {stats.revenueMonth.toLocaleString()}</h3>
+                    <h3 className="text-2xl font-bold text-gray-900">KES {totalRevenue.toLocaleString()}</h3>
                     <div className="flex items-center gap-1 mt-2 text-sm text-green-600 font-medium">
                         <ArrowUpRight size={16}/> 12.5% vs last month
                     </div>
@@ -141,7 +153,7 @@ const GarageDashboard: React.FC<DashboardProps> = ({ stats, role }) => {
                         <Briefcase size={64} className="text-emerald-600"/>
                     </div>
                     <p className="text-gray-500 text-sm font-medium mb-1">Net Profit (Est.)</p>
-                    <h3 className="text-2xl font-bold text-gray-900">KES {(stats.revenueMonth * 0.22).toLocaleString()}</h3>
+                    <h3 className="text-2xl font-bold text-gray-900">KES {grossProfit.toLocaleString()}</h3>
                     <div className="flex items-center gap-1 mt-2 text-sm text-emerald-600 font-medium">
                         <ArrowUpRight size={16}/> 22% Margin
                     </div>
@@ -152,7 +164,7 @@ const GarageDashboard: React.FC<DashboardProps> = ({ stats, role }) => {
                         <AlertCircle size={64} className="text-orange-600"/>
                     </div>
                     <p className="text-gray-500 text-sm font-medium mb-1">Outstanding Invoices</p>
-                    <h3 className="text-2xl font-bold text-gray-900">KES 145,000</h3>
+                    <h3 className="text-2xl font-bold text-gray-900">KES {outstandingReceivables.toLocaleString()}</h3>
                     <div className="flex items-center gap-1 mt-2 text-sm text-orange-600 font-medium">
                         <ArrowDownRight size={16}/> 3 Overdue > 30 Days
                     </div>

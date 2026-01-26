@@ -1,0 +1,1 @@
+Responsibilities: job lifecycle, parts and labor, service records.

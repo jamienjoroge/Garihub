@@ -13,6 +13,12 @@ import HRManager from './views/HRManager';
 import SettingsManager from './views/SettingsManager';
 import ProjectManager from './views/ProjectManager';
 import AssetManager from './views/AssetManager';
+import PublicVehicleViewer from './views/PublicVehicleViewer';
+import PublicNotificationProofViewer from './views/PublicNotificationProofViewer';
+import CustomerVehiclesList from './views/CustomerVehiclesList';
+import CustomerPreferences from './views/CustomerPreferences';
+import CustomerNotifications from './views/CustomerNotifications';
+import Login from './views/Login';
 import { ViewState, UserRole, JobCard, SalesOrder, JobStatus, Product, Branch, ServiceBay, ServicePackage, Customer, Invoice, FixedAsset, Vehicle, Account, JournalEntry, Quotation, Appointment, Employee, TenantSettings, Inspection, StockMovement, ServiceRecord } from './types';
 import { ShieldAlert } from 'lucide-react';
 
@@ -337,6 +343,26 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    const path = window.location.pathname;
+    if (path.startsWith('/public/vehicles/')) {
+      return <PublicVehicleViewer/>;
+    }
+    if (path.startsWith('/public/notifications/')) {
+      return <PublicNotificationProofViewer/>;
+    }
+    if (path.startsWith('/customer/vehicles')) {
+      return <CustomerVehiclesList/>;
+    }
+    if (path.startsWith('/customer/preferences')) {
+      return <CustomerPreferences/>;
+    }
+    if (path.startsWith('/customer/notifications')) {
+      return <CustomerNotifications/>;
+    }
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      return <Login/>;
+    }
     if (!isAccessAllowed(currentView)) {
         return (
             <div className="flex flex-col items-center justify-center h-full text-slate-500">
