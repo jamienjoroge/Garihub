@@ -22,11 +22,6 @@ export class EventLedger {
   constructor(cfg?: Partial<LedgerStorageConfig>) {
     const baseDir = cfg?.baseDir ?? path.resolve(process.cwd(), 'data', 'event-ledger');
     this.cfg = { baseDir };
-    if (String(process.env.LEDGER_BACKEND || '').toLowerCase() === 'postgres') {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mod = require('./PostgresLedger.ts');
-      this.pg = new mod.PostgresEventLedger();
-    }
   }
 
   private fileForTenant(tenant_id: string) {
@@ -95,4 +90,14 @@ export class EventLedger {
     }
     return payload;
   }
+}
+
+export async function createEventLedger(cfg?: Partial<LedgerStorageConfig>): Promise<EventLedger> {
+  const ledger = new EventLedger(cfg);
+  if (String(process.env.LEDGER_BACKEND || '').toLowerCase() === 'postgres') {
+    const mod = await import('./PostgresLedger.ts');
+    // @ts-ignore
+    ledger['pg'] = new (mod as any).PostgresEventLedger();
+  }
+  return ledger;
 }

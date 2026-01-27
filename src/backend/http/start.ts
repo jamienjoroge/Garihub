@@ -1,11 +1,11 @@
 import { createServer } from './server.ts';
-import { EventLedger } from '../core/event-ledger/Ledger.ts';
+import { createEventLedger } from '../core/event-ledger/Ledger.ts';
 import { AuthService } from '../modules/auth/write/services.ts';
 import { createAuthControllers } from './controllers/auth.ts';
 
 async function main() {
   try {
-    const ledger = new EventLedger({});
+    const ledger = await createEventLedger({});
     const authService = new AuthService(ledger);
 
     const notImpl = async (_req: any, reply: any) => { reply.code(501).send({ errorCode: 'NOT_IMPLEMENTED' }); };
