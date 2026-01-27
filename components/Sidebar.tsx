@@ -137,7 +137,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, role, se
              </div>
         )}
         
-        <button className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-2 text-slate-400 hover:text-red-400 transition-colors text-sm w-full px-2 py-2 rounded-lg hover:bg-slate-800`}>
+        <button
+          onClick={() => { try { localStorage.removeItem('authToken'); } catch {} window.location.assign('/'); }}
+          className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-start'} gap-2 text-slate-400 hover:text-red-400 transition-colors text-sm w-full px-2 py-2 rounded-lg hover:bg-slate-800`}
+        >
           <LogOut size={18} />
           {!isCollapsed && <span>Sign Out</span>}
         </button>

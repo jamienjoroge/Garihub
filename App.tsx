@@ -406,6 +406,33 @@ const App: React.FC = () => {
     }
   };
 
+  const path = window.location.pathname;
+  const token = localStorage.getItem('authToken');
+  if (path.startsWith('/public/vehicles/')) {
+    return (
+      <div className="h-screen bg-[#f3f4f6] overflow-hidden">
+        <main className="h-full overflow-y-auto scroll-smooth">
+          <PublicVehicleViewer/>
+        </main>
+      </div>
+    );
+  }
+  if (path.startsWith('/public/notifications/')) {
+    return (
+      <div className="h-screen bg-[#f3f4f6] overflow-hidden">
+        <main className="h-full overflow-y-auto scroll-smooth">
+          <PublicNotificationProofViewer/>
+        </main>
+      </div>
+    );
+  }
+  if (!token) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#f3f4f6]">
+        <Login/>
+      </div>
+    );
+  }
   return (
     <div className="flex h-screen bg-[#f3f4f6] overflow-hidden">
       <Sidebar currentView={currentView} setCurrentView={setCurrentView} role={role} setRole={setRole} currentBranch={currentBranch} branches={branches} setBranch={setCurrentBranch} />
