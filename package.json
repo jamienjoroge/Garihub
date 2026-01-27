@@ -17,7 +17,6 @@
     "test:notifications": "node scripts/run-test-notifications.mjs"
   },
   "dependencies": {
-    "@google/genai": "^1.37.0",
     "fastify": "^4.27.0",
     "lucide-react": "^0.562.0",
     "pdfkit": "^0.13.0",
