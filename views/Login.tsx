@@ -8,7 +8,24 @@ const Login: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const request = async () => {
     setError(null);
-    try { const res = await apiClient.post('/api/auth/request-otp', { phone }); setOtpId(res.otpId); } catch (e: any) { setError(e?.message || 'Error'); }
+    try {
+      const res: any = await apiClient.post('/api/auth/request-otp', { phone });
+      if (!res || typeof res !== 'object' || !res.otpId) {
+        if (res && res.errorCode && res.message) {
+          setError(`${res.errorCode}: ${res.message}`);
+        } else {
+          setError('Unable to request OTP. Please check the server URL or try again.');
+        }
+        return;
+      }
+      setOtpId(res.otpId);
+    } catch (e: any) {
+      if (e && e.errorCode && e.message) {
+        setError(`${e.errorCode}: ${e.message}`);
+      } else {
+        setError('Unable to request OTP. Please try again.');
+      }
+    }
   };
   const verify = async () => {
     setError(null);
