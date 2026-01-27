@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Search, Car, History, FileText, PenTool, Shield, User, Fuel, GitCommit, Database, Plus, X, FolderOpen, Link as LinkIcon, CheckCircle, Lock, AlertOctagon, UserPlus, AlertCircle, Edit3 } from 'lucide-react';
 import { Vehicle, JobCard, Inspection, ServiceRecord, LedgerEventType } from '../types';
 import { apiClient } from '../services/apiClient';
-import { QRCodeCanvas } from 'qrcode.react';
+import QRCode from 'react-qr-code';
 
 interface VehicleRegistryProps {
     vehicles: Vehicle[];
@@ -247,7 +247,7 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({
                                       <div className="text-xs text-indigo-700">Expires: {new Date(shareInfo.expiresAt).toLocaleString()} {expired ? (<span className="ml-2 px-2 py-0.5 rounded bg-red-100 text-red-700">expired</span>) : (<span className="ml-2 px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">Expires in {remainingDays} days</span>)}</div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <QRCodeCanvas value={url} size={72} includeMargin={true} />
+                                      <QRCode value={url} size={72} />
                                       <button disabled={expired} onClick={() => navigator.clipboard.writeText(url)} className={`px-2 py-1 rounded text-xs ${expired ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-indigo-600 text-white'}`}>Copy</button>
                                     </div>
                                   </div>

@@ -17,20 +17,20 @@
     "test:notifications": "node scripts/run-test-notifications.mjs"
   },
   "dependencies": {
-    "lucide-react": "^0.562.0",
-    "react": "^19.2.3",
-    "recharts": "^3.6.0",
-    "react-dom": "^19.2.3",
     "@google/genai": "^1.37.0",
     "fastify": "^4.27.0",
-    "qrcode.react": "^3.1.0",
-    "pdfkit": "^0.13.0"
+    "lucide-react": "^0.562.0",
+    "pdfkit": "^0.13.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-qr-code": "^2.0.18",
+    "recharts": "^3.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0",
-    "ts-node": "^10.9.2"
+    "vite": "^6.2.0"
   }
 }
