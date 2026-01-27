@@ -233,27 +233,25 @@ const VehicleRegistry: React.FC<VehicleRegistryProps> = ({
                         </div>
                         
                         <div className="relative pl-8 border-l-2 border-dashed border-gray-300 space-y-8">
-                            {shareInfo && (
-                              {(() => {
-                                const url = `${window.location.origin}/public/vehicles/${selectedVehicle.id}/history?token=${shareInfo.tokenId}`;
-                                const remainingMs = new Date(shareInfo.expiresAt).getTime() - Date.now();
-                                const remainingDays = Math.max(0, Math.floor(remainingMs / (1000*60*60*24)));
-                                const expired = remainingMs <= 0;
-                                return (
-                                  <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg text-sm flex items-center justify-between gap-3">
-                                    <div>
-                                      <div className="font-bold text-indigo-800">Share Link</div>
-                                      <div className="font-mono text-indigo-700 text-xs break-all">{url}</div>
-                                      <div className="text-xs text-indigo-700">Expires: {new Date(shareInfo.expiresAt).toLocaleString()} {expired ? (<span className="ml-2 px-2 py-0.5 rounded bg-red-100 text-red-700">expired</span>) : (<span className="ml-2 px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">Expires in {remainingDays} days</span>)}</div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <QRCode value={url} size={72} />
-                                      <button disabled={expired} onClick={() => navigator.clipboard.writeText(url)} className={`px-2 py-1 rounded text-xs ${expired ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-indigo-600 text-white'}`}>Copy</button>
-                                    </div>
+                            {shareInfo && (() => {
+                              const url = `${window.location.origin}/public/vehicles/${selectedVehicle.id}/history?token=${shareInfo.tokenId}`;
+                              const remainingMs = new Date(shareInfo.expiresAt).getTime() - Date.now();
+                              const remainingDays = Math.max(0, Math.floor(remainingMs / (1000*60*60*24)));
+                              const expired = remainingMs <= 0;
+                              return (
+                                <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg text-sm flex items-center justify-between gap-3">
+                                  <div>
+                                    <div className="font-bold text-indigo-800">Share Link</div>
+                                    <div className="font-mono text-indigo-700 text-xs break-all">{url}</div>
+                                    <div className="text-xs text-indigo-700">Expires: {new Date(shareInfo.expiresAt).toLocaleString()} {expired ? (<span className="ml-2 px-2 py-0.5 rounded bg-red-100 text-red-700">expired</span>) : (<span className="ml-2 px-2 py-0.5 rounded bg-indigo-100 text-indigo-700">Expires in {remainingDays} days</span>)}</div>
                                   </div>
-                                );
-                              })()}
-                            )}
+                                  <div className="flex items-center gap-2">
+                                    <QRCode value={url} size={72} />
+                                    <button disabled={expired} onClick={() => navigator.clipboard.writeText(url)} className={`px-2 py-1 rounded text-xs ${expired ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-indigo-600 text-white'}`}>Copy</button>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                             {getLedger(selectedVehicle.id).length > 0 ? (
                                 getLedger(selectedVehicle.id).map((record, idx) => (
                                     <div key={record.id} className="relative group">

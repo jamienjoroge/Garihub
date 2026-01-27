@@ -720,7 +720,7 @@ const ProjectManager: React.FC<ProjectManagerProps> = ({
                                             value={newProjData.deposit}
                                             onChange={(e) => setNewProjData({...newProjData, deposit: parseInt(e.target.value)})}
                                         />
-                                        <p className="text-xs text-gray-500 mt-1">If > 0, a Sales Order will be automatically generated.</p>
+                                        <p className="text-xs text-gray-500 mt-1">If &gt; 0, a Sales Order will be automatically generated.</p>
                                     </div>
                                 </div>
                             )}

@@ -166,7 +166,7 @@ const GarageDashboard: React.FC<DashboardProps> = ({ stats, role }) => {
                     <p className="text-gray-500 text-sm font-medium mb-1">Outstanding Invoices</p>
                     <h3 className="text-2xl font-bold text-gray-900">KES {outstandingReceivables.toLocaleString()}</h3>
                     <div className="flex items-center gap-1 mt-2 text-sm text-orange-600 font-medium">
-                        <ArrowDownRight size={16}/> 3 Overdue > 30 Days
+                        <ArrowDownRight size={16}/> 3 Overdue &gt; 30 Days
                     </div>
                 </div>
 
