@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "start:api": "node scripts/start-api.mjs",
     "test:finance": "node scripts/run-test-finance.mjs",
     "test:payments": "node scripts/run-test-payments.mjs",
     "test:inventory": "node scripts/run-test-inventory.mjs",
