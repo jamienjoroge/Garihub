@@ -1,4 +1,5 @@
 import Fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import cors from '@fastify/cors';
 import { registerErrorMiddleware } from './errors.ts';
 import { buildKey, checkAndReturn, store } from './idempotency.ts';
 import { registerAuthMiddleware } from './authMiddleware.ts';
@@ -33,21 +34,11 @@ export interface ServerDeps {
 
 export function createServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: false });
-  app.addHook('onRequest', async (req, reply) => {
-    const origin = String((req.headers as any).origin || '');
-    const allow = origin === 'https://garihub-1.onrender.com'
-      || origin === 'http://localhost:3000'
-      || origin === 'http://localhost:5173'
-      || origin.endsWith('.onrender.com');
-    if (allow) {
-      reply.header('Access-Control-Allow-Origin', origin);
-      reply.header('Vary', 'Origin');
-      reply.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-      reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-correlation-id, x-branch-id, x-tenant-id, x-webhook-secret, x-admin-secret');
-    }
-    if (req.method === 'OPTIONS') {
-      reply.code(204).send();
-    }
+  app.register(cors, {
+    origin: ['https://garihub-1.onrender.com', 'http://localhost:3000', 'http://localhost:5173'],
+    methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type','Authorization','x-correlation-id','x-branch-id','x-tenant-id','x-user-id','x-webhook-secret','x-admin-secret'],
+    credentials: false,
   });
   registerErrorMiddleware(app);
   registerAuthMiddleware(app);
