@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from 'crypto';
 import { EventMetadata } from '../../contracts/common';
-import { query } from '../../db/pg';
+import { query } from '../../db/pg.ts';
 
 export interface DomainEvent<T = Record<string, unknown>> {
   id: string;

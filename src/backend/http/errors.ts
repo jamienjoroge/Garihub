@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { ValidationError, AuthorizationError, InvalidStateTransitionError, NotFoundError, DomainError } from '../core/errors/domain';
-import { InfrastructureError } from '../core/errors/infrastructure';
+import { ValidationError, AuthorizationError, InvalidStateTransitionError, NotFoundError, DomainError } from '../core/errors/domain.ts';
+import { InfrastructureError } from '../core/errors/infrastructure.ts';
 
 function statusForError(err: unknown): number {
   if (err instanceof ValidationError) return 422;

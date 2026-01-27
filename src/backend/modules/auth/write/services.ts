@@ -1,6 +1,6 @@
 import { EventLedger } from '../../../core/event-ledger/Ledger';
 import { RequestOtpCommand, VerifyOtpCommand } from './commands';
-import { signToken } from '../token';
+import { signToken } from '../token.ts';
 import { randomUUID } from 'crypto';
 
 export class AuthService {

@@ -1,7 +1,7 @@
 import Fastify, { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { registerErrorMiddleware } from './errors';
-import { buildKey, checkAndReturn, store } from './idempotency';
-import { registerAuthMiddleware } from './authMiddleware';
+import { registerErrorMiddleware } from './errors.ts';
+import { buildKey, checkAndReturn, store } from './idempotency.ts';
+import { registerAuthMiddleware } from './authMiddleware.ts';
 
 export interface JobControllers {
   create: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;

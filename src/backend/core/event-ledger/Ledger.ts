@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import { createHash, randomUUID } from 'crypto';
 import path from 'path';
 import { EventMetadata } from '../../contracts/common';
-import { PostgresEventLedger } from './PostgresLedger';
+// Postgres adapter is loaded dynamically to avoid requiring 'pg' unless enabled
 
 export interface DomainEvent<T = Record<string, unknown>> {
   id: string;
@@ -17,13 +17,15 @@ export interface LedgerStorageConfig {
 
 export class EventLedger {
   private cfg: LedgerStorageConfig;
-  private pg?: PostgresEventLedger;
+  private pg?: any;
 
   constructor(cfg?: Partial<LedgerStorageConfig>) {
     const baseDir = cfg?.baseDir ?? path.resolve(process.cwd(), 'data', 'event-ledger');
     this.cfg = { baseDir };
     if (String(process.env.LEDGER_BACKEND || '').toLowerCase() === 'postgres') {
-      this.pg = new PostgresEventLedger();
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mod = require('./PostgresLedger.ts');
+      this.pg = new mod.PostgresEventLedger();
     }
   }
 
