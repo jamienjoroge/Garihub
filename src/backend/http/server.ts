@@ -33,6 +33,22 @@ export interface ServerDeps {
 
 export function createServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: false });
+  app.addHook('onRequest', async (req, reply) => {
+    const origin = String((req.headers as any).origin || '');
+    const allow = origin === 'https://garihub-1.onrender.com'
+      || origin === 'http://localhost:3000'
+      || origin === 'http://localhost:5173'
+      || origin.endsWith('.onrender.com');
+    if (allow) {
+      reply.header('Access-Control-Allow-Origin', origin);
+      reply.header('Vary', 'Origin');
+      reply.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+      reply.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-correlation-id, x-branch-id, x-tenant-id, x-webhook-secret, x-admin-secret');
+    }
+    if (req.method === 'OPTIONS') {
+      reply.code(204).send();
+    }
+  });
   registerErrorMiddleware(app);
   registerAuthMiddleware(app);
   app.addHook('preHandler', async (req, reply) => {
