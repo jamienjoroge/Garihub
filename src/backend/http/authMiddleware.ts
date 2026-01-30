@@ -19,7 +19,13 @@ function verifyToken(token: string) {
 export function registerAuthMiddleware(app: FastifyInstance) {
   app.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
     const url = String((req as any).raw?.url || req.url || '');
-    if (url.startsWith('/public/') || url.startsWith('/webhooks/') || url.startsWith('/api/auth/')) return;
+    if (
+      url.startsWith('/api/auth/') || url === '/api/auth' ||
+      url.startsWith('/public/') ||
+      url.startsWith('/webhooks/')
+    ) {
+      return;
+    }
     const authHeader = String((req.headers as any)['authorization'] || '');
     if (!authHeader.startsWith('Bearer ')) {
       reply.code(401).send({ errorCode: 'AUTHORIZATION_ERROR', message: 'Missing token', correlation_id: String((req.headers as any)['x-correlation-id'] || '') });

@@ -39,10 +39,10 @@ async function run() {
   const { app } = makeServer(baseDir);
   await app.ready();
   const headers = { 'x-tenant-id': 't1' } as any;
-  const reqResp = await app.inject({ method: 'POST', url: '/api/auth/request-otp', headers, payload: { phone: '254700000000' } });
+  const reqResp = await app.inject({ method: 'POST', url: '/api/auth/request-otp', headers: { ...headers, 'x-correlation-id': 'c1' }, payload: { phone: '254700000000' } });
   if (reqResp.statusCode !== 200) throw new Error('request-otp failed');
   const { otpId } = reqResp.json();
-  const verResp = await app.inject({ method: 'POST', url: '/api/auth/verify-otp', headers, payload: { otpId, phone: '254700000000', code: '123456' } });
+  const verResp = await app.inject({ method: 'POST', url: '/api/auth/verify-otp', headers: { ...headers, 'x-correlation-id': 'c2' }, payload: { otpId, phone: '254700000000', code: '123456' } });
   if (verResp.statusCode !== 200) throw new Error('verify-otp failed');
   const { token } = verResp.json();
   if (!token) throw new Error('token missing');
