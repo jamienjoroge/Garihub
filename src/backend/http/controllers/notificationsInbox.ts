@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { EventLedger } from '../../core/event-ledger/Ledger';
-import { projectUserNotificationInbox } from '../../modules/notifications/read/inbox';
+import { projectUserNotificationInbox } from '../../modules/notifications/read/inbox.ts';
 
 export function createNotificationsInboxController(ledger: EventLedger) {
   return async function handler(req: FastifyRequest, reply: FastifyReply) {

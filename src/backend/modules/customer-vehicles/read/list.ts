@@ -1,4 +1,4 @@
-import { EventLedger, DomainEvent } from '../../../core/event-ledger/Ledger';
+import { EventLedger, DomainEvent } from '../../../core/event-ledger/Ledger.ts';
 
 export interface CustomerVehicleListItem {
   vehicleId: string;

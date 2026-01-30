@@ -1,6 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { EventLedger } from '../../core/event-ledger/Ledger';
-import { projectCustomerVehiclesList } from '../../modules/customer-vehicles/read/list';
+import { projectCustomerVehiclesList } from '../../modules/customer-vehicles/read/list.ts';
 
 export function createCustomerVehiclesListController(ledger: EventLedger) {
   return async function handler(req: FastifyRequest, reply: FastifyReply) {
