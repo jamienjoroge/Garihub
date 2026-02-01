@@ -454,6 +454,12 @@ const App: React.FC = () => {
     );
   }
   if (!token) {
+    try {
+      if (!path.startsWith('/public/')) {
+        const search = window.location.search || '';
+        sessionStorage.setItem('returnTo', `${path}${search}`);
+      }
+    } catch {}
     return (
       <div className="flex items-center justify-center h-screen bg-[#f3f4f6]">
         <Login/>

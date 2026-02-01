@@ -32,6 +32,14 @@ const Login: React.FC = () => {
     try {
       const res: any = await apiClient.post('/api/auth/verify-otp', { otpId, phone, code });
       localStorage.setItem('authToken', res.token);
+      try {
+        const returnTo = sessionStorage.getItem('returnTo');
+        if (returnTo) {
+          sessionStorage.removeItem('returnTo');
+          window.location.assign(returnTo);
+          return;
+        }
+      } catch {}
       const role = String(res?.user?.role || '');
       if (role === 'CUSTOMER') {
         window.location.assign('/customer/vehicles');
