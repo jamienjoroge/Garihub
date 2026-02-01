@@ -9,11 +9,12 @@ function generateCorrelationId(): string {
 type Method = 'GET' | 'POST';
 
 const baseUrl = import.meta.env?.VITE_API_BASE_URL || '';
+const tenantId = import.meta.env?.VITE_TENANT_ID || 't1';
 
 async function request(path: string, method: Method, body?: any) {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'x-tenant-id': import.meta.env?.VITE_TENANT_ID || 't1',
+    'x-tenant-id': tenantId,
     'x-branch-id': import.meta.env?.VITE_BRANCH_ID || 'b1',
     'x-user-id': import.meta.env?.VITE_USER_ID || 'u1',
     'x-correlation-id': generateCorrelationId(),
