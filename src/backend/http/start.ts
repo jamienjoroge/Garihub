@@ -4,6 +4,7 @@ import { AuthService } from '../modules/auth/write/services.ts';
 import { createAuthControllers } from './controllers/auth.ts';
 import type { EventLedger } from '../core/event-ledger/Ledger.ts';
 import { createAdminSeedController } from './controllers/adminSeed.ts';
+import { createVehicleHistoryController } from './controllers/vehicles.ts';
 
 async function main() {
   try {
@@ -98,7 +99,7 @@ async function main() {
       payments: { record: notImpl },
       inventory: { issue: notImpl },
       manager: { summary: notImpl, jobsProfitability: notImpl },
-      vehicles: { history: notImpl, inspections: notImpl, recordInspection: notImpl },
+      vehicles: { history: createVehicleHistoryController(ledger), inspections: notImpl, recordInspection: notImpl },
       public: { history: notImpl, inspections: notImpl },
       share: { create: notImpl },
       webhooks: { smsReceipt: notImpl },

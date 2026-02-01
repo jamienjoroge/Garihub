@@ -24,27 +24,30 @@ export async function projectVehicleHistory(ledger: EventLedger, tenant_id: stri
   let vin: string | undefined;
   for (const e of evts as DomainEvent[]) {
     if (e.event_name === 'JobCardCreated') {
-      const v = e.payload.job?.vehicle;
+      const p: any = e.payload as any;
+      const v = p.job?.vehicle;
       if (v?.id === vehicleId) {
         make = v.make; model = v.model; year = v.year; vin = v.vin;
-        timeline.push({ type: 'JobCardCreated', date: e.metadata.timestamp, details: { jobId: e.payload.job?.id, issueDescription: e.payload.job?.issueDescription } });
+        timeline.push({ type: 'JobCardCreated', date: e.metadata.timestamp, details: { jobId: p.job?.id, issueDescription: p.job?.issueDescription } });
       }
     }
     if (e.event_name === 'ServiceRecordMinted') {
-      if (e.payload.vehicleId === vehicleId) {
-        timeline.push({ type: 'ServiceRecordMinted', date: e.metadata.timestamp, details: e.payload });
+      const p: any = e.payload as any;
+      if (p.vehicleId === vehicleId) {
+        timeline.push({ type: 'ServiceRecordMinted', date: e.metadata.timestamp, details: p });
       }
     }
     if (e.event_name === 'InspectionRecorded') {
-      if (e.payload.vehicleId === vehicleId) {
-        timeline.push({ type: 'InspectionRecorded', date: e.metadata.timestamp, details: e.payload });
+      const p: any = e.payload as any;
+      if (p.vehicleId === vehicleId) {
+        timeline.push({ type: 'InspectionRecorded', date: e.metadata.timestamp, details: p });
       }
     }
     if (e.event_name === 'InvoiceGenerated') {
-      const jobId = e.payload.jobId;
-      // Link via job card if vehicle matches
-      const related = evts.find(x => x.event_name === 'JobCardCreated' && x.payload.job?.id === jobId && x.payload.job?.vehicle?.id === vehicleId);
-      if (related) timeline.push({ type: 'InvoiceGenerated', date: e.metadata.timestamp, details: { invoiceId: e.payload.entityId, totalAmount: e.payload.totalAmount } });
+      const p: any = e.payload as any;
+      const jobId = p.jobId;
+      const related = (evts as any[]).find(x => x.event_name === 'JobCardCreated' && (x.payload as any).job?.id === jobId && (x.payload as any).job?.vehicle?.id === vehicleId);
+      if (related) timeline.push({ type: 'InvoiceGenerated', date: e.metadata.timestamp, details: { invoiceId: p.entityId, totalAmount: p.totalAmount } });
     }
   }
   timeline.sort((a, b) => a.date.localeCompare(b.date));

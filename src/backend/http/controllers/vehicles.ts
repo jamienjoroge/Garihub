@@ -1,8 +1,8 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { EventLedger } from '../../core/event-ledger/Ledger';
-import { projectVehicleHistory, projectInspectionSummary } from '../../modules/customer-vehicles/read/models';
+import { projectVehicleHistory, projectInspectionSummary } from '../../modules/customer-vehicles/read/models.ts';
 import { CustomerVehicleService } from '../../modules/customer-vehicles/write/services';
-import { buildMetadata } from '../metadata';
+import { buildMetadata } from '../metadata.ts';
 import { VehicleAccessService } from '../../modules/customer-vehicles/write/accessService';
 
 export function createVehicleHistoryController(ledger: EventLedger) {
