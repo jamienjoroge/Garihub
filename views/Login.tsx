@@ -29,7 +29,18 @@ const Login: React.FC = () => {
   };
   const verify = async () => {
     setError(null);
-    try { const res = await apiClient.post('/api/auth/verify-otp', { otpId, phone, code }); localStorage.setItem('authToken', res.token); window.location.assign('/'); } catch (e: any) { setError(e?.message || 'Error'); }
+    try {
+      const res: any = await apiClient.post('/api/auth/verify-otp', { otpId, phone, code });
+      localStorage.setItem('authToken', res.token);
+      const role = String(res?.user?.role || '');
+      if (role === 'CUSTOMER') {
+        window.location.assign('/customer/vehicles');
+      } else {
+        window.location.assign('/');
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Error');
+    }
   };
   return (
     <div className="flex items-center justify-center h-screen bg-gray-100">

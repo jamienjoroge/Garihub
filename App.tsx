@@ -342,6 +342,33 @@ const App: React.FC = () => {
       return permissions[view]?.includes(role) || false;
   };
 
+  function decodeTokenRole(token: string): UserRole | null {
+    try {
+      const parts = token.split('.');
+      if (parts.length < 1) return null;
+      const data = parts[0];
+      const jsonStr = typeof atob === 'function' ? atob(data) : Buffer.from(data, 'base64').toString('utf-8');
+      const payload = JSON.parse(jsonStr);
+      const r = String(payload?.role || '');
+      if (r === 'CUSTOMER' || r === 'MANAGER' || r === 'TECHNICIAN' || r === 'RECEPTIONIST' || r === 'INSPECTOR') return r as UserRole;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    const path = window.location.pathname;
+    const token = localStorage.getItem('authToken');
+    if (token && !path.startsWith('/public/')) {
+      const decodedRole = decodeTokenRole(token);
+      if (decodedRole) setRole(decodedRole);
+      if (decodedRole === 'CUSTOMER' && path === '/') {
+        window.location.assign('/customer/vehicles');
+      }
+    }
+  }, []);
+
   const renderContent = () => {
     const path = window.location.pathname;
     if (path.startsWith('/public/vehicles/')) {

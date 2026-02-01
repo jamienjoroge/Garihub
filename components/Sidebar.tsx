@@ -34,6 +34,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, role, se
     { id: 'CUSTOMER_NOTIFICATIONS', label: 'Notifications', icon: ClipboardCheck, roles: ['CUSTOMER'] },
   ];
 
+  const hasToken = typeof localStorage !== 'undefined' && !!localStorage.getItem('authToken');
+  const showSimulator = !hasToken && (import.meta as any)?.env?.DEV;
   return (
     <div 
       className={`${isCollapsed ? 'w-20' : 'w-64'} bg-slate-900 text-white flex flex-col h-screen transition-all duration-300 shadow-xl z-50 flex-shrink-0`}
@@ -106,35 +108,35 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, role, se
 
       {/* Footer / Role Simulator */}
       <div className="p-4 border-t border-slate-700 bg-slate-900">
-        {!isCollapsed ? (
-            <div className="mb-4 animate-in fade-in slide-in-from-bottom-2">
-              <label className="text-xs text-slate-500 uppercase font-semibold mb-2 block">Simulate Role</label>
-              <select 
-                value={role}
-                onChange={(e) => {
-                  const newRole = e.target.value as UserRole;
-                  setRole(newRole);
-                  if (newRole === 'CUSTOMER') setCurrentView('CUSTOMER_PORTAL');
-                  else setCurrentView('DASHBOARD');
-                }}
-                className="w-full bg-slate-800 text-slate-300 text-sm rounded p-2 border border-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer hover:bg-slate-750"
-              >
-                <option value="MANAGER">Manager</option>
-                <option value="RECEPTIONIST">Receptionist</option>
-                <option value="TECHNICIAN">Technician</option>
-                <option value="INSPECTOR">Inspector</option>
-                <option value="CUSTOMER">Customer</option>
-              </select>
-            </div>
+        {showSimulator && !isCollapsed ? (
+          <div className="mb-4 animate-in fade-in slide-in-from-bottom-2">
+            <label className="text-xs text-slate-500 uppercase font-semibold mb-2 block">Simulate Role</label>
+            <select
+              value={role}
+              onChange={(e) => {
+                const newRole = e.target.value as UserRole;
+                setRole(newRole);
+                if (newRole === 'CUSTOMER') setCurrentView('CUSTOMER_PORTAL');
+                else setCurrentView('DASHBOARD');
+              }}
+              className="w-full bg-slate-800 text-slate-300 text-sm rounded p-2 border border-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer hover:bg-slate-750"
+            >
+              <option value="MANAGER">Manager</option>
+              <option value="RECEPTIONIST">Receptionist</option>
+              <option value="TECHNICIAN">Technician</option>
+              <option value="INSPECTOR">Inspector</option>
+              <option value="CUSTOMER">Customer</option>
+            </select>
+          </div>
         ) : (
-             <div className="mb-4 flex justify-center">
-                 <div 
-                    className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-blue-400 cursor-help" 
-                    title={`Current Role: ${role}`}
-                 >
-                     {role.charAt(0)}
-                 </div>
-             </div>
+          <div className="mb-4 flex justify-center">
+            <div
+              className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-blue-400 cursor-help"
+              title={`Current Role: ${role}`}
+            >
+              {role.charAt(0)}
+            </div>
+          </div>
         )}
         
         <button
