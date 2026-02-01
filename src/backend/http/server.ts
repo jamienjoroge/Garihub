@@ -38,7 +38,7 @@ export function createServer(deps: ServerDeps): FastifyInstance {
     origin: ['https://garihub-1.onrender.com', 'http://localhost:3000', 'http://localhost:5173'],
     methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
     allowedHeaders: ['Content-Type','Authorization','x-correlation-id','x-branch-id','x-tenant-id','x-user-id','x-webhook-secret','x-admin-secret'],
-    credentials: false,
+    credentials: true,
   });
   registerErrorMiddleware(app);
   registerAuthMiddleware(app);

@@ -18,6 +18,9 @@ function verifyToken(token: string) {
 
 export function registerAuthMiddleware(app: FastifyInstance) {
   app.addHook('preHandler', async (req: FastifyRequest, reply: FastifyReply) => {
+    if (String((req as any).method || (req as any).raw?.method || '').toUpperCase() === 'OPTIONS') {
+      return;
+    }
     const url = String((req as any).raw?.url || req.url || '');
     if (
       url.startsWith('/api/auth/') || url === '/api/auth' ||
