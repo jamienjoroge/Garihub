@@ -3,6 +3,7 @@ import { createEventLedger } from '../core/event-ledger/Ledger.ts';
 import { AuthService } from '../modules/auth/write/services.ts';
 import { createAuthControllers } from './controllers/auth.ts';
 import type { EventLedger } from '../core/event-ledger/Ledger.ts';
+import { createAdminSeedController } from './controllers/adminSeed.ts';
 
 async function main() {
   try {
@@ -101,7 +102,7 @@ async function main() {
       public: { history: notImpl, inspections: notImpl },
       share: { create: notImpl },
       webhooks: { smsReceipt: notImpl },
-      admin: { reconcile: notImpl },
+      admin: { reconcile: notImpl, seed: createAdminSeedController(ledger) },
       notificationsProof: { byId: notImpl, byUser: notImpl },
       notificationsPublic: { byId: notImpl },
       customerVehicles: { list: createCustomerVehiclesListControllerInline(ledger) },

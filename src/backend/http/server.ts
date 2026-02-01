@@ -22,7 +22,7 @@ export interface ServerDeps {
   public: { history: (req: FastifyRequest, reply: FastifyReply) => Promise<void>; inspections: (req: FastifyRequest, reply: FastifyReply) => Promise<void> };
   share: { create: (req: FastifyRequest, reply: FastifyReply) => Promise<void> };
   webhooks: { smsReceipt: (req: FastifyRequest, reply: FastifyReply) => Promise<void> };
-  admin: { reconcile: (req: FastifyRequest, reply: FastifyReply) => Promise<void> };
+  admin: { reconcile: (req: FastifyRequest, reply: FastifyReply) => Promise<void>; seed: (req: FastifyRequest, reply: FastifyReply) => Promise<void> };
   notificationsProof: { byId: (req: FastifyRequest, reply: FastifyReply) => Promise<void>; byUser: (req: FastifyRequest, reply: FastifyReply) => Promise<void> };
   notificationsPublic: { byId: (req: FastifyRequest, reply: FastifyReply) => Promise<void> };
   customerVehicles: { list: (req: FastifyRequest, reply: FastifyReply) => Promise<void> };
@@ -91,6 +91,7 @@ export function createServer(deps: ServerDeps): FastifyInstance {
   app.get('/public/vehicles/:vehicleId/inspections', deps.public.inspections);
   app.post('/webhooks/sms/delivery-receipt', deps.webhooks.smsReceipt);
   app.post('/api/admin/notifications/reconcile', deps.admin.reconcile);
+  app.post('/api/admin/seed-demo', deps.admin.seed);
   app.get('/api/notifications/:notificationId/proof', deps.notificationsProof.byId);
   app.get('/api/notifications/proof/user/:userId', deps.notificationsProof.byUser);
   app.get('/public/notifications/:notificationId/proof', deps.notificationsPublic.byId);
